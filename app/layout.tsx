@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Geist } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+    <html lang="en" className={cn("dark", "h-full", "antialiased", inter.variable, "font-sans", geist.variable)}>
       <head>
         {/* Preload Geist Pixel Circle display font */}
         <link
@@ -40,7 +43,7 @@ export default function RootLayout({
           referrerPolicy="no-referrer"
         />
       </head>
-      <body className="min-h-full bg-black text-white overflow-hidden select-none">
+      <body className="min-h-full bg-black text-white antialiased">
         {children}
       </body>
     </html>

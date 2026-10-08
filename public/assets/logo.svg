@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="gGrad" x1="10" y1="10" x2="90" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#111113" />
+      <stop offset="100%" stop-color="#2a2a2e" />
+    </linearGradient>
+  </defs>
+  <!-- Stylized G Desk / Chat bubble fusion -->
+  <path d="M50 14C30.118 14 14 30.118 14 50C14 69.882 30.118 86 50 86C60.2 86 69.38 81.78 75.92 74.98L64.2 64.12C60.7 67.8 55.65 70.1 50 70.1C38.9 70.1 29.9 61.1 29.9 50C29.9 38.9 38.9 29.9 50 29.9C60.55 29.9 69.2 38.05 70 48.4H50V62H86V50C86 30.118 69.882 14 50 14Z" fill="url(#gGrad)"/>
+  <!-- AI Spark dot inside G notch -->
+  <circle cx="78" cy="22" r="7" fill="#111113" />
+</svg>

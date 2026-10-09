@@ -158,11 +158,13 @@ export default function SignupPage() {
       setLoading(true)
       setFormError(null)
 
-      // Step 1: Create user with Neon Managed Better Auth
+      // Step 1: Create user with Neon Managed Better Auth and Notionists-neutral Dicebear avatar
+      const dicebearAvatar = `https://api.dicebear.com/10.x/notionists-neutral/svg?seed=${encodeURIComponent(name.trim() || email.trim())}`
       const res = await authClient.signUp.email({
         name: name.trim(),
         email: email.trim(),
         password,
+        image: dicebearAvatar,
         callbackURL: "/dashboard",
       })
 

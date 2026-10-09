@@ -109,6 +109,11 @@ export function LoginForm({
       if (res?.error) {
         setFormError(res.error.message || "Invalid email or password")
       } else {
+        if (res?.data?.user) {
+          try {
+            localStorage.setItem("gauravdesk_user", JSON.stringify(res.data.user))
+          } catch {}
+        }
         router.push("/dashboard")
       }
     } catch (err: unknown) {

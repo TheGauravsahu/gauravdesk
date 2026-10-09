@@ -3,19 +3,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth/client";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ChevronDownIcon,
-  LayoutDashboardIcon,
-  LogOutIcon,
   ArrowRightIcon,
   ShieldCheckIcon,
   ZapIcon,
@@ -187,11 +178,27 @@ const DEMO_PRESETS = [
   },
 ];
 
-export default function LandingPage() {
+interface LandingPageProps {
+  initialUser?: { name?: string | null; email?: string | null } | null;
+}
+
+export default function LandingPage({ initialUser = null }: LandingPageProps) {
   const [activeNav, setActiveNav] = useState<string>("Home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [statsVisible, setStatsVisible] = useState<boolean>(false);
-  const [user, setUser] = useState<{ name?: string | null; email?: string | null } | null>(null);
+  const [user, setUser] = useState<{ name?: string | null; email?: string | null } | null>(() => {
+    if (initialUser) return initialUser;
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("gauravdesk_user");
+        if (stored) return JSON.parse(stored);
+        if (document.cookie.includes("session") || document.cookie.includes("auth")) {
+          return { name: "User" };
+        }
+      } catch {}
+    }
+    return null;
+  });
   const statsRef = useRef<HTMLDivElement>(null);
 
   // Demo simulator state
@@ -215,6 +222,14 @@ export default function LandingPage() {
         const res = await authClient.getSession();
         if (res?.data?.user) {
           setUser(res.data.user);
+          try {
+            localStorage.setItem("gauravdesk_user", JSON.stringify(res.data.user));
+          } catch {}
+        } else if (res?.data === null) {
+          setUser(null);
+          try {
+            localStorage.removeItem("gauravdesk_user");
+          } catch {}
         }
       } catch (err) {
         console.error("Session check error", err);
@@ -227,6 +242,9 @@ export default function LandingPage() {
     try {
       await authClient.signOut();
       setUser(null);
+      try {
+        localStorage.removeItem("gauravdesk_user");
+      } catch {}
     } catch (err) {
       console.error("Sign out error", err);
     }
@@ -412,55 +430,20 @@ export default function LandingPage() {
                 })}
               </nav>
 
-              {/* Auth State in Header */}
+              {/* Auth State in Header: Instant check, showing "Dashboard" or "Sign in" */}
               {user ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <button
-                        className="shrink-0 flex items-center gap-2 bg-[#28282a] hover:bg-[#323234] text-white px-3.5 rounded-full transition-all duration-200 cursor-pointer border border-white/10"
-                        style={{
-                          height: "clamp(44px, 5.2vw, 48px)",
-                          boxShadow: "var(--nav-shadow)",
-                        }}
-                      />
-                    }
-                  >
-                    <div className="size-6 rounded-full bg-white text-black font-semibold text-xs grid place-items-center">
-                      {user.name ? user.name[0].toUpperCase() : user.email ? user.email[0].toUpperCase() : "U"}
-                    </div>
-                    <span className="text-xs font-medium max-w-[90px] truncate text-[#c8c8c8]">
-                      {user.name || user.email?.split("@")[0]}
-                    </span>
-                    <ChevronDownIcon className="size-3 text-[#8e8e8e]" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    side="bottom"
-                    className="min-w-48 bg-[#18181b] border border-white/10 text-white rounded-xl p-1.5 shadow-2xl"
-                  >
-                    <div className="px-2.5 py-1.5 border-b border-white/10">
-                      <p className="text-xs font-semibold text-white truncate">
-                        {user.name || "Operator"}
-                      </p>
-                      <p className="text-[11px] text-[#8e8e8e] truncate">{user.email}</p>
-                    </div>
-                    <DropdownMenuItem className="cursor-pointer text-xs p-2 rounded-lg hover:bg-white/10 mt-1">
-                      <Link href="/dashboard" className="flex items-center gap-2 w-full text-white">
-                        <LayoutDashboardIcon className="size-3.5" />
-                        Dashboard
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-white/10 my-1" />
-                    <DropdownMenuItem
-                      onClick={handleSignOut}
-                      className="cursor-pointer text-xs p-2 rounded-lg text-red-400 hover:bg-red-500/10 flex items-center gap-2 w-full"
-                    >
-                      <LogOutIcon className="size-3.5" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Link
+                  href="/dashboard"
+                  className="shrink-0 flex items-center justify-center bg-[#28282a] text-[#c8c8c8] font-medium rounded-full transition-all duration-200 hover:bg-[#323234] hover:text-white hover:-translate-y-px"
+                  style={{
+                    height: "clamp(44px, 5.2vw, 48px)",
+                    padding: "0 clamp(18px, 2vw, 24px)",
+                    fontSize: "clamp(13px, 1.4vw, 15px)",
+                    boxShadow: "var(--nav-shadow)",
+                  }}
+                >
+                  Dashboard
+                </Link>
               ) : (
                 <Link
                   href="/login"
@@ -573,35 +556,18 @@ export default function LandingPage() {
                 <div className="w-full h-px bg-neutral-200 my-1" />
 
                 {user ? (
-                  <div className="flex flex-col gap-2 pt-1">
-                    <div className="px-2 text-center">
-                      <p className="text-xs font-semibold text-black truncate">
-                        {user.name || "Operator"}
-                      </p>
-                      <p className="text-[11px] text-[#666] truncate">{user.email}</p>
-                    </div>
-                    <Link
-                      href="/dashboard"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="w-full py-2.5 bg-black text-white hover:bg-neutral-800 font-medium rounded-full text-[13px] transition-colors"
-                    >
-                      Go to Dashboard
-                    </Link>
-                    <button
-                      onClick={() => {
-                        handleSignOut();
-                        setMobileMenuOpen(false);
-                      }}
-                      className="w-full py-2 text-red-600 hover:text-red-700 text-xs font-medium cursor-pointer"
-                    >
-                      Sign out
-                    </button>
-                  </div>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="w-full py-3 bg-[#28282a] text-[#c8c8c8] hover:text-white hover:bg-[#323234] font-medium rounded-full text-[14px] transition-colors text-center"
+                  >
+                    Dashboard
+                  </Link>
                 ) : (
                   <Link
                     href="/login"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="w-full py-3 bg-[#28282a] text-[#c8c8c8] hover:text-white hover:bg-[#323234] font-medium rounded-full text-[14px] transition-colors"
+                    className="w-full py-3 bg-[#28282a] text-[#c8c8c8] hover:text-white hover:bg-[#323234] font-medium rounded-full text-[14px] transition-colors text-center"
                   >
                     Sign in
                   </Link>

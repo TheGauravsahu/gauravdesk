@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter, Geist } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -24,7 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={cn("dark", "h-full", "antialiased", inter.variable, "font-sans", geist.variable)}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={cn("dark", "h-full", "antialiased", inter.variable, "font-sans", geist.variable)}
+    >
       <head>
         {/* Preload Geist Pixel Circle display font */}
         <link
@@ -43,8 +49,11 @@ export default function RootLayout({
           referrerPolicy="no-referrer"
         />
       </head>
-      <body className="min-h-full bg-black text-white antialiased">
-        {children}
+      <body className="min-h-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased transition-colors duration-150">
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          {children}
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   );

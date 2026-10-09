@@ -1,6 +1,14 @@
 import { neon } from "@neondatabase/serverless"
 
 const databaseUrl = process.env.DATABASE_URL
+if (!databaseUrl) {
+  console.error("Missing DATABASE_URL")
+  process.exit(1)
+}
+
+const sql = neon(databaseUrl)
+
+async function check() {
   const ws = await sql`SELECT id, name, agent_name, accent_color, position, greeting_message, starter_questions, avatar_url, allowed_domains FROM workspaces;`
   console.log("Workspaces in DB:", JSON.stringify(ws, null, 2))
 

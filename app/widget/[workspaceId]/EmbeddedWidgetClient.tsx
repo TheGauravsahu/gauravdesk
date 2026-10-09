@@ -25,24 +25,7 @@ interface EmbeddedWidgetClientProps {
   }
 }
 
-function GlossyOrbAvatar({ className = "size-9" }: { className?: string }) {
-  return (
-    <div
-      className={`rounded-full shrink-0 relative overflow-hidden shadow-inner ${className}`}
-      style={{
-        background: "radial-gradient(circle at 35% 30%, #93c5fd 0%, #3b82f6 45%, #1d4ed8 75%, #1e40af 100%)",
-        boxShadow: "inset -2px -2px 6px rgba(0, 0, 0, 0.4), inset 2px 2px 4px rgba(255, 255, 255, 0.7), 0 2px 5px rgba(0,0,0,0.25)",
-      }}
-    >
-      <div
-        className="absolute top-0.5 left-1 w-1/3 h-1/4 rounded-full opacity-80 blur-[0.3px]"
-        style={{
-          background: "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 80%)",
-        }}
-      />
-    </div>
-  )
-}
+import { GlossyOrbAvatar } from "@/components/ui/GlossyOrbAvatar"
 
 function getClientMetadata() {
   if (typeof window === "undefined") return {}
@@ -273,7 +256,7 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
                   className="size-8.5 rounded-full object-cover shrink-0 shadow-xs border border-white/30"
                 />
               ) : (
-                <GlossyOrbAvatar className="size-8.5" />
+                <GlossyOrbAvatar className="size-8.5" color={workspace.accentColor} />
               )}
               <div className="truncate">
                 <h3 className="font-bold text-sm leading-tight truncate">
@@ -308,7 +291,7 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
           )}
 
           {/* Messages Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[#0e0e11]">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[#0e0e11] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex justify-center pb-1">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-700/60 bg-zinc-900/90 text-[11px] text-zinc-300 font-medium shadow-2xs">
                 <BookOpen className="size-3 text-zinc-400" />
@@ -342,8 +325,8 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
                   <div className={`flex items-start gap-2 ${isVisitor ? "max-w-[85%]" : "max-w-[90%]"}`}>
                     {!isVisitor && (
                       isOperator ? (
-                        <div className="size-6 rounded-full bg-blue-600 text-white font-bold text-[10px] grid place-items-center mt-0.5 shrink-0 shadow-xs">
-                          OP
+                        <div className="size-6 rounded-full bg-blue-600 text-white grid place-items-center mt-0.5 shrink-0 shadow-xs">
+                          <User className="size-3.5" />
                         </div>
                       ) : workspace.avatarUrl ? (
                         <img
@@ -352,7 +335,7 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
                           className="size-6 rounded-full object-cover mt-0.5 shrink-0"
                         />
                       ) : (
-                        <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
+                        <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" color={workspace.accentColor} />
                       )
                     )}
 
@@ -397,16 +380,18 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
             {/* Starter chips */}
             {messages.length <= 1 && workspace.starterQuestions?.length > 0 && (
               <div className="pt-2 flex flex-col items-end gap-1.5">
-                {workspace.starterQuestions.map((q, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSend(q)}
-                    className="text-right px-3.5 py-2 rounded-xl border border-zinc-700/70 bg-[#16161a] text-zinc-200 text-xs hover:border-zinc-500 hover:bg-[#202026] transition-all cursor-pointer shadow-2xs hover:scale-[1.01]"
-                  >
-                    {q}
-                  </button>
-                ))}
+                {workspace.starterQuestions
+                  .filter((q) => typeof q === "string" && !q.toLowerCase().includes("reset my password"))
+                  .map((q, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSend(q)}
+                      className="text-right px-3.5 py-2 rounded-xl border border-zinc-700/70 bg-[#16161a] text-zinc-200 text-xs hover:border-zinc-500 hover:bg-[#202026] transition-all cursor-pointer shadow-2xs hover:scale-[1.01]"
+                    >
+                      {q}
+                    </button>
+                  ))}
               </div>
             )}
 
@@ -432,19 +417,19 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
               e.preventDefault()
               handleSend()
             }}
-            className="p-2.5 bg-[#121215] border-t border-zinc-800 flex items-center gap-2 shrink-0"
+            className="p-3 bg-[#111114]/95 border-t border-zinc-800/80 flex items-center gap-2 shrink-0 backdrop-blur-sm"
           >
             <input
               type="text"
               placeholder={isHumanEscalated ? "Type message to operator..." : "Write a message..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-[#1c1c21] border border-zinc-700/50 focus:border-zinc-500 rounded-xl px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
+              className="flex-1 bg-[#1a1a1f] border border-zinc-700/60 focus:border-zinc-500 rounded-full px-3.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
             />
             <button
               type="submit"
               disabled={!input.trim()}
-              className="size-7 rounded-full flex items-center justify-center text-white disabled:opacity-40 transition-transform active:scale-95 cursor-pointer shadow-xs shrink-0"
+              className="size-7.5 rounded-full flex items-center justify-center text-white disabled:opacity-40 transition-transform active:scale-95 cursor-pointer shadow-xs shrink-0"
               style={{ backgroundColor: workspace.accentColor || "#2563eb" }}
             >
               <ArrowUp className="size-3.5 stroke-[2.5]" />

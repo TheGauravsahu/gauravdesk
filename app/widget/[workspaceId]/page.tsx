@@ -43,7 +43,12 @@ export default async function WidgetPage({ params }: WidgetPageProps) {
           accentColor: ws.accent_color,
           position: ws.position,
           greetingMessage: ws.greeting_message,
-          starterQuestions: Array.isArray(ws.starter_questions) ? ws.starter_questions : [],
+          starterQuestions: Array.isArray(ws.starter_questions)
+            ? ws.starter_questions.filter(
+                (q: any) =>
+                  typeof q === "string" && !q.toLowerCase().includes("reset my password")
+              )
+            : [],
           avatarUrl: ws.avatar_url,
         }}
       />

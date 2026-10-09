@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react"
 import { ArrowUp, BookOpen, ExternalLink, RotateCcw, User } from "lucide-react"
+import { GlossyOrbAvatar } from "@/components/ui/GlossyOrbAvatar"
 
 interface PreviewMessage {
   id: string
@@ -102,33 +103,37 @@ export function WidgetPreview({
                   className="flex shrink-0 items-center justify-between px-4 py-3 text-white shadow-sm"
                   style={{ backgroundColor: accentColor }}
                 >
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
                     {agentAvatar ? (
                       <img
                         src={agentAvatar}
                         alt=""
-                        className="size-8 shrink-0 rounded-full border border-white/30 object-cover"
+                        className="size-8 shrink-0 rounded-full border border-white/30 object-cover shadow-xs"
                       />
                     ) : (
-                      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-semibold">
-                        {agentName.slice(0, 1).toUpperCase()}
-                      </span>
+                      <GlossyOrbAvatar className="size-8" color={accentColor} />
                     )}
-                    <span className="truncate text-sm font-semibold">
-                      {agentName}
-                    </span>
+                    <div className="truncate">
+                      <span className="block truncate text-sm font-semibold leading-tight">
+                        {agentName}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/90">
+                        <span className="size-1.5 rounded-full bg-emerald-400" />
+                        Replies right away
+                      </span>
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => onOpenChange(false)}
                     aria-label="Minimize chat preview"
-                    className="rounded p-1 text-white/80 transition-colors hover:text-white"
+                    className="rounded-lg p-1 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
                   >
                     <span aria-hidden="true">⌄</span>
                   </button>
                 </header>
 
-                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-[#0e0e11] p-4">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-[#0e0e11] p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   <div className="flex justify-center pb-1">
                     <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700/60 bg-zinc-900/90 px-3 py-1 text-[11px] font-medium text-zinc-300">
                       <BookOpen className="size-3 text-zinc-400" />
@@ -143,7 +148,9 @@ export function WidgetPreview({
                         alt=""
                         className="mt-0.5 size-6 shrink-0 rounded-full object-cover"
                       />
-                    ) : null}
+                    ) : (
+                      <GlossyOrbAvatar className="mt-0.5 size-6 shrink-0" color={accentColor} />
+                    )}
                     <div className="rounded-2xl rounded-tl-sm border border-zinc-700/40 bg-[#222226] px-3.5 py-2.5 text-xs leading-relaxed text-white">
                       {greeting}
                     </div>
@@ -177,40 +184,42 @@ export function WidgetPreview({
                     )
                   })}
 
-                  {messages.length === 1 ? (
+                  {messages.length === 1 && starterQuestions.length > 0 ? (
                     <div className="flex flex-col items-end gap-1.5 pt-2">
-                      {starterQuestions.map((starterQuestion) => (
-                        <button
-                          key={starterQuestion}
-                          type="button"
-                          disabled={isSending}
-                          onClick={() => onSend(starterQuestion)}
-                          className="rounded-xl border border-zinc-700/70 bg-[#16161a] px-3.5 py-2 text-right text-xs text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-[#202026] disabled:opacity-50"
-                        >
-                          {starterQuestion}
-                        </button>
-                      ))}
+                      {starterQuestions
+                        .filter((q) => !q.toLowerCase().includes("reset my password"))
+                        .map((starterQuestion) => (
+                          <button
+                            key={starterQuestion}
+                            type="button"
+                            disabled={isSending}
+                            onClick={() => onSend(starterQuestion)}
+                            className="rounded-xl border border-zinc-700/70 bg-[#16161a] px-3.5 py-2 text-right text-xs text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-[#202026] disabled:opacity-50 shadow-2xs"
+                          >
+                            {starterQuestion}
+                          </button>
+                        ))}
                     </div>
                   ) : null}
                 </div>
 
-                <div className="border-t border-zinc-800 bg-[#121215] p-2.5">
+                <div className="border-t border-zinc-800/80 bg-[#121215] p-2.5">
                   <form onSubmit={handleSubmit} className="flex items-center gap-2">
                     <input
                       aria-label="Preview message"
                       value={visitorInput}
                       onChange={(event) => onInputChange(event.target.value)}
                       placeholder="Write a message…"
-                      className="min-w-0 flex-1 rounded-xl border border-zinc-700/50 bg-[#1c1c21] px-3 py-2 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+                      className="min-w-0 flex-1 rounded-full border border-zinc-700/60 bg-[#1c1c21] px-3.5 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500 transition-colors"
                     />
                     <button
                       type="submit"
                       aria-label="Send preview message"
                       disabled={!visitorInput.trim() || isSending}
-                      className="grid size-8 shrink-0 place-items-center rounded-full text-white shadow-xs transition-opacity disabled:opacity-40"
+                      className="grid size-7.5 shrink-0 place-items-center rounded-full text-white shadow-xs transition-transform active:scale-95 disabled:opacity-40"
                       style={{ backgroundColor: accentColor }}
                     >
-                      <ArrowUp className="size-4" />
+                      <ArrowUp className="size-3.5 stroke-[2.5]" />
                     </button>
                   </form>
                 </div>

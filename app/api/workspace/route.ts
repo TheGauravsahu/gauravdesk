@@ -27,15 +27,21 @@ export async function GET(req: Request) {
 
     const ws = rows[0]
     if (new URL(req.url).searchParams.get("summary") === "1") {
+      const cleanQuestions = Array.isArray(ws.starter_questions)
+        ? ws.starter_questions.filter((q: any) => typeof q === "string" && !q.toLowerCase().includes("reset my password"))
+        : []
+
       return NextResponse.json({
         id: ws.id,
         name: ws.name,
         agentName: ws.agent_name,
-        starterQuestions: Array.isArray(ws.starter_questions)
-          ? ws.starter_questions
-          : [],
+        starterQuestions: cleanQuestions,
       })
     }
+
+    const cleanQuestions = Array.isArray(ws.starter_questions)
+      ? ws.starter_questions.filter((q: any) => typeof q === "string" && !q.toLowerCase().includes("reset my password"))
+      : []
 
     return NextResponse.json({
       id: ws.id,
@@ -44,7 +50,7 @@ export async function GET(req: Request) {
       accentColor: ws.accent_color,
       position: ws.position,
       greetingMessage: ws.greeting_message,
-      starterQuestions: Array.isArray(ws.starter_questions) ? ws.starter_questions : [],
+      starterQuestions: cleanQuestions,
       allowedDomains: Array.isArray(ws.allowed_domains) ? ws.allowed_domains : [],
       agentEnabled: ws.agent_enabled ?? true,
       avatarUrl: ws.avatar_url,
@@ -80,6 +86,12 @@ export async function PUT(req: Request) {
 
     const workspaceId = existing[0].id
 
+    const sanitizedStarterQuestions = Array.isArray(starterQuestions)
+      ? starterQuestions.filter(
+          (q) => typeof q === "string" && !q.toLowerCase().includes("reset my password")
+        )
+      : starterQuestions
+
     const updated = await sql`
       UPDATE workspaces
       SET
@@ -87,7 +99,7 @@ export async function PUT(req: Request) {
         accent_color = COALESCE(${accentColor}, accent_color),
         position = COALESCE(${position}, position),
         greeting_message = COALESCE(${greetingMessage}, greeting_message),
-        starter_questions = COALESCE(${JSON.stringify(starterQuestions)}::jsonb, starter_questions),
+        starter_questions = COALESCE(${JSON.stringify(sanitizedStarterQuestions)}::jsonb, starter_questions),
         allowed_domains = COALESCE(${allowedDomains}::text[], allowed_domains),
         agent_enabled = COALESCE(${agentEnabled}, agent_enabled),
         avatar_url = COALESCE(${avatarUrl}, avatar_url),

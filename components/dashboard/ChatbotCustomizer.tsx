@@ -52,25 +52,7 @@ interface KnowledgeDoc {
   createdAt: string
 }
 
-function GlossyOrbAvatar({ className = "size-9" }: { className?: string }) {
-  return (
-    <div
-      className={`rounded-full shrink-0 relative overflow-hidden shadow-inner ${className}`}
-      style={{
-        background: "radial-gradient(circle at 35% 30%, #93c5fd 0%, #3b82f6 45%, #1d4ed8 75%, #1e40af 100%)",
-        boxShadow: "inset -2px -2px 6px rgba(0, 0, 0, 0.4), inset 2px 2px 4px rgba(255, 255, 255, 0.7), 0 2px 5px rgba(0,0,0,0.25)",
-      }}
-    >
-      {/* Specular highlight */}
-      <div
-        className="absolute top-0.5 left-1 w-1/3 h-1/4 rounded-full opacity-80 blur-[0.3px]"
-        style={{
-          background: "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 80%)",
-        }}
-      />
-    </div>
-  )
-}
+import { GlossyOrbAvatar } from "@/components/ui/GlossyOrbAvatar"
 
 import type { WorkspaceInitialData, KnowledgeDocItem } from "@/lib/dashboard-data"
 
@@ -101,10 +83,20 @@ export function ChatbotCustomizer({
   const [position, setPosition] = useState<"bottom-left" | "bottom-right">(initialWorkspace?.position || "bottom-right")
   const [greeting, setGreeting] = useState(initialWorkspace?.greetingMessage || "Hi there! How can we help you today?")
   
+  const sanitizeQuestions = (list?: string[] | null) =>
+    Array.isArray(list)
+      ? list.filter(
+          (q) =>
+            typeof q === "string" &&
+            q.trim() &&
+            !q.toLowerCase().includes("reset my password")
+        )
+      : []
+
   const computedStarterQuestions = initialSuggestedQuestions?.length
-    ? initialSuggestedQuestions
+    ? sanitizeQuestions(initialSuggestedQuestions)
     : initialWorkspace?.starterQuestions?.length
-    ? initialWorkspace.starterQuestions
+    ? sanitizeQuestions(initialWorkspace.starterQuestions)
     : []
   const [starterQuestions, setStarterQuestions] = useState<string[]>(computedStarterQuestions)
 
@@ -687,7 +679,7 @@ export function ChatbotCustomizer({
                         className="size-full object-cover"
                       />
                     ) : (
-                      <GlossyOrbAvatar className="size-full" />
+                      <GlossyOrbAvatar className="size-full" color={selectedColor.hex} />
                     )}
                   </div>
 

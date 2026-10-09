@@ -89,9 +89,12 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
     }))
 
     const suggestedQuestions = Array.isArray(ws.starter_questions)
-      ? ws.starter_questions.filter(
-          (question: unknown): question is string => typeof question === "string"
-        )
+      ? ws.starter_questions
+          .filter(
+            (question: unknown): question is string =>
+              typeof question === "string" &&
+              !question.toLowerCase().includes("reset my password")
+          )
       : []
 
     // Fetch conversations and messages

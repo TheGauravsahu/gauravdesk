@@ -6,44 +6,97 @@ import {
   Conversation,
   Message,
 } from "./types"
-import { INITIAL_CONVERSATIONS } from "./mock-data"
 import { CustomerPreviewModal } from "./CustomerPreviewModal"
 import {
-  Search,
+  ConversationFilter,
+  ConversationListPanel,
+} from "./ConversationListPanel"
+import {
   Check,
   Send,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
   FileText,
   User,
   PanelRightClose,
   PanelRightOpen,
-  ArrowUp,
-  Clock,
-  Globe,
-  Monitor,
-  Laptop,
-  CheckCircle2,
-  Inbox,
   MessageSquare,
 } from "lucide-react"
 
-interface OperatorInboxProps {
-  hideNavRail?: boolean
+function metadataText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : "Not captured"
 }
 
-export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
+interface OperatorInboxProps {
+  initialConversations?: Conversation[]
+}
+
+export function OperatorInbox({
+  initialConversations,
+}: OperatorInboxProps) {
   const router = useRouter()
-  // Starts empty by default to display the requested empty state
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<"all" | "waiting" | "agent" | "you" | "closed">("all")
+  // Starts with server-provided conversations immediately, or empty
+  const [conversations, setConversations] = useState<Conversation[]>(
+    initialConversations || []
+  )
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialConversations && initialConversations.length > 0
+      ? initialConversations[0].id
+      : null
+  )
+  const [activeFilter, setActiveFilter] = useState<ConversationFilter>("all")
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [replyText, setReplyText] = useState<string>("")
   const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(true)
-  const [isGroundingExpanded, setIsGroundingExpanded] = useState<boolean>(true)
   const [isCustomerPreviewOpen, setIsCustomerPreviewOpen] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState<boolean>(!initialConversations)
+  const [isSending, setIsSending] = useState<boolean>(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  // Fetch real conversations from DB
+  const fetchConversations = React.useCallback(async (silent = false) => {
+    try {
+      const res = await fetch("/api/conversations")
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load conversations")
+      }
+      if (!Array.isArray(data.conversations)) {
+        throw new Error("The conversations response was invalid")
+      }
+      setConversations(data.conversations)
+      setSelectedId((curr) => {
+        if (curr && data.conversations.some((c: Conversation) => c.id === curr)) return curr
+        return data.conversations.length > 0 ? data.conversations[0].id : null
+      })
+      setLoadError(null)
+    } catch (error) {
+      console.error("Failed to fetch conversations", error)
+      setLoadError(
+        error instanceof Error ? error.message : "Failed to load conversations"
+      )
+    } finally {
+      if (!silent) setIsLoading(false)
+    }
+  }, [])
+
+  const handleRetry = () => {
+    setIsLoading(true)
+    void fetchConversations()
+  }
+
+  React.useEffect(() => {
+    const initialFetch = setTimeout(() => {
+      void fetchConversations()
+    }, 0)
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") fetchConversations(true)
+    }, 5000)
+    return () => {
+      clearTimeout(initialFetch)
+      clearInterval(timer)
+    }
+  }, [fetchConversations])
 
   // Active selected conversation
   const activeConversation = selectedId
@@ -53,10 +106,11 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
     let matchesTab = true
+    if (activeFilter === "all") matchesTab = c.status !== "closed"
     if (activeFilter === "waiting") matchesTab = c.tag === "Waiting"
     if (activeFilter === "agent") matchesTab = c.tag === "Agent"
     if (activeFilter === "closed") matchesTab = c.status === "closed"
-    if (activeFilter === "you") matchesTab = c.assignedTo === "Juan Lorenz" || c.status === "open"
+    if (activeFilter === "you") matchesTab = c.tag === "You" || c.assignedTo === "Operator"
 
     const matchesSearch =
       c.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -64,25 +118,33 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
     return matchesTab && matchesSearch
   })
 
-  const waitingCount = conversations.filter((c) => c.tag === "Waiting").length
+  const waitingCount = conversations.filter(
+    (c) => c.tag === "Waiting" && c.status !== "closed"
+  ).length
 
   // Send reply
-  const handleSendMessage = (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
-    if (!replyText.trim() || !selectedId) return
+    if (!replyText.trim() || !selectedId || isSending) return
 
+    const trimmed = replyText.trim()
+    const conversationId = selectedId
+    const previousConversations = conversations
+    setActionError(null)
+
+    // Optimistic update
     const newMsg: Message = {
       id: `m-${Date.now()}`,
       sender: "operator",
       senderName: "Operator",
-      text: replyText.trim(),
+      text: trimmed,
       timestamp: "Just now",
       seen: "Sent • Just now",
     }
 
     setConversations((prev) =>
       prev.map((c) =>
-        c.id === selectedId
+        c.id === conversationId
           ? {
               ...c,
               tag: "You",
@@ -92,201 +154,95 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
           : c
       )
     )
-    setReplyText("")
+
+    setIsSending(true)
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId,
+          replyText: trimmed,
+          operatorName: "Operator",
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send reply")
+      }
+      setReplyText("")
+      await fetchConversations(true)
+    } catch (error) {
+      console.error("Failed to send operator reply", error)
+      setConversations(previousConversations)
+      setReplyText(trimmed)
+      setActionError(
+        error instanceof Error ? error.message : "Failed to send reply"
+      )
+    } finally {
+      setIsSending(false)
+    }
   }
 
   // Toggle ticket status
-  const handleToggleClose = () => {
+  const handleToggleClose = async () => {
     if (!selectedId) return
+    const current = conversations.find((c) => c.id === selectedId)
+    const nextStatus = current?.status === "open" ? "closed" : "open"
+    const previousConversations = conversations
+    setActionError(null)
+
     setConversations((prev) =>
       prev.map((c) =>
         c.id === selectedId
           ? {
               ...c,
-              status: c.status === "open" ? "closed" : "open",
+              status: nextStatus,
             }
           : c
       )
     )
+
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: selectedId,
+          status: nextStatus,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update conversation")
+      }
+      await fetchConversations(true)
+    } catch (error) {
+      console.error("Failed to toggle status", error)
+      setConversations(previousConversations)
+      setActionError(
+        error instanceof Error ? error.message : "Failed to update conversation"
+      )
+    }
   }
 
   return (
     <div className="w-full h-full overflow-hidden flex bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors">
       
-      {/* =========================================================================
-          COLUMN 1: CONVERSATION LIST (Left)
-          ========================================================================= */}
-      <aside className="w-80 md:w-88 shrink-0 flex flex-col border-r border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-[#0e0e11] overflow-hidden select-none">
-        
-        {/* Inbox Header & Waiting Count Badge */}
-        <div className="p-4 border-b border-zinc-200/70 dark:border-zinc-800/70 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <h2 className="font-bold text-base text-zinc-900 dark:text-zinc-100">
-              Inbox
-            </h2>
-            {waitingCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white font-semibold text-[11px] shadow-2xs">
-                {waitingCount} waiting
-              </span>
-            )}
-          </div>
-
-          {/* Toggle button to load/clear mock conversations for testing */}
-          <button
-            type="button"
-            onClick={() => {
-              if (conversations.length === 0) {
-                setConversations(INITIAL_CONVERSATIONS)
-                setSelectedId(INITIAL_CONVERSATIONS[0].id)
-              } else {
-                setConversations([])
-                setSelectedId(null)
-              }
-            }}
-            className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-            title="Toggle between real empty state and demo conversations"
-          >
-            {conversations.length === 0 ? "Load demo" : "Clear"}
-          </button>
-        </div>
-
-        {/* Filter Pills */}
-        <div className="px-3.5 py-2.5 border-b border-zinc-200/60 dark:border-zinc-800/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
-          {[
-            { id: "all", label: "All open" },
-            { id: "waiting", label: waitingCount > 0 ? `Waiting ${waitingCount}` : "Waiting" },
-            { id: "agent", label: "Agent" },
-            { id: "you", label: "You" },
-            { id: "closed", label: "Closed" },
-          ].map((tab) => {
-            const isSelected = activeFilter === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveFilter(tab.id as any)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                  isSelected
-                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-2xs"
-                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-                }`}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Search Input */}
-        <div className="p-3 border-b border-zinc-200/60 dark:border-zinc-800/60">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-400" />
-            <input
-              type="text"
-              placeholder="Search visitors and last messages"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8.5 pr-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/60 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-            />
-          </div>
-        </div>
-
-        {/* Conversation List Items OR Empty State (Matching Image 2) */}
-        {filteredConversations.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none">
-            <div className="size-10 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 mb-3 shadow-2xs">
-              <Inbox className="size-5" />
-            </div>
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
-              No conversations yet
-            </h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-[210px] text-center mb-4">
-              Add the widget to your site. When a visitor sends a message, the conversation shows up here.
-            </p>
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard")}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white text-xs font-medium border border-zinc-700/80 shadow-xs cursor-pointer transition-all active:scale-95"
-            >
-              <span className="font-mono text-zinc-400 text-[11px] font-semibold">&lt;/&gt;</span>
-              <span>Install the widget</span>
-            </button>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/40">
-            {filteredConversations.map((conv) => {
-              const isSelected = conv.id === selectedId
-              const isWaiting = conv.tag === "Waiting"
-
-              return (
-                <div
-                  key={conv.id}
-                  onClick={() => setSelectedId(conv.id)}
-                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors relative ${
-                    isSelected
-                      ? "bg-zinc-100/90 dark:bg-zinc-800/60"
-                      : "hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
-                  }`}
-                >
-                  {/* Active Indicator Bar */}
-                  {isSelected && (
-                    <span className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-900 dark:bg-white rounded-r-full" />
-                  )}
-
-                  {/* Avatar with face/initial */}
-                  <div
-                    className={`size-9 rounded-full shrink-0 flex items-center justify-center text-white text-xs font-semibold shadow-xs ${
-                      conv.customerAvatarBg || "bg-orange-500"
-                    }`}
-                  >
-                    <span className="text-sm">😊</span>
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <p
-                        className={`text-xs truncate ${
-                          isSelected
-                            ? "font-bold text-zinc-900 dark:text-zinc-50"
-                            : "font-semibold text-zinc-800 dark:text-zinc-200"
-                        }`}
-                      >
-                        {conv.customerName}
-                      </p>
-                      <span className="text-[10px] text-zinc-400 shrink-0 font-medium">
-                        {conv.lastActivity}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-zinc-700 dark:text-zinc-300 truncate mb-1.5 font-medium">
-                      {conv.subjectSnippet}
-                    </p>
-
-                    {/* Status Tag Pill */}
-                    <div className="flex items-center gap-2">
-                      {isWaiting ? (
-                        <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-semibold text-[10px] shadow-2xs">
-                          Waiting
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium text-[10px]">
-                          Agent
-                        </span>
-                      )}
-                      <span className="text-[10px] text-zinc-400 truncate">
-                        {isWaiting
-                          ? "The visitor asked for a person"
-                          : "Handled autonomously"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </aside>
+      <ConversationListPanel
+        conversations={filteredConversations}
+        selectedId={selectedId}
+        activeFilter={activeFilter}
+        searchQuery={searchQuery}
+        waitingCount={waitingCount}
+        isLoading={isLoading}
+        loadError={loadError}
+        onFilterChange={setActiveFilter}
+        onSearchChange={setSearchQuery}
+        onSelect={setSelectedId}
+        onRetry={handleRetry}
+        onInstallWidget={() => router.push("/dashboard")}
+      />
 
       {/* =========================================================================
           COLUMN 2: ACTIVE THREAD & WORKSPACE OR EMPTY STATE (Middle)
@@ -314,7 +270,7 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
             <div className="flex items-center gap-3 truncate">
               {/* Customer Avatar */}
               <div className="size-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm shadow-xs shrink-0">
-                😊
+                {activeConversation.customerName.slice(0, 1).toUpperCase()}
               </div>
 
               <div className="truncate">
@@ -327,7 +283,8 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-400 truncate">
-                  Unknown location • 12:27 local time
+                  {metadataText(activeConversation.metadata?.pageUrl)} ·{" "}
+                  {metadataText(activeConversation.metadata?.localTime)}
                 </p>
               </div>
             </div>
@@ -375,103 +332,118 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
           </header>
 
           {/* Message Thread Stream */}
-          <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-zinc-50/60 dark:bg-[#0c0c0e]">
-            {/* Top greeting bubble */}
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-zinc-400 mb-1 mr-1">Greeting</span>
-              <div className="rounded-2xl rounded-tr-sm bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 px-4 py-2.5 text-xs text-zinc-800 dark:text-zinc-200 shadow-xs max-w-md">
-                Hello from this super friendly agent 😊
+          <div className="flex-1 p-6 overflow-y-auto space-y-5 bg-zinc-50/60 dark:bg-[#0c0c0e]">
+            {activeConversation.messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-zinc-400">
+                No messages yet in this conversation.
               </div>
-            </div>
-
-            {/* Visitor Question Message */}
-            <div className="flex items-start gap-3 max-w-xl">
-              <div className="size-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm shadow-xs shrink-0 mt-0.5">
-                😊
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                    {activeConversation.customerName}
-                  </span>
-                  <span className="text-[10px] text-zinc-400">6 minutes ago</span>
-                </div>
-                <div className="rounded-2xl rounded-tl-sm bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 px-4 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 font-medium shadow-xs">
-                  How do I reset my password?
-                </div>
-              </div>
-            </div>
-
-            {/* Grounding Explanation Accordion Card */}
-            <div className="ml-11 max-w-2xl rounded-2xl border border-zinc-200/90 dark:border-zinc-800/90 bg-white dark:bg-zinc-900/90 shadow-xs overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setIsGroundingExpanded(!isGroundingExpanded)}
-                className="w-full px-4 py-3 flex items-center justify-between text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-3.5 text-blue-500" />
-                  <span>How the agent handled this</span>
-                </div>
-                {isGroundingExpanded ? (
-                  <ChevronUp className="size-3.5 text-zinc-400" />
-                ) : (
-                  <ChevronDown className="size-3.5 text-zinc-400" />
-                )}
-              </button>
-
-              {isGroundingExpanded && (
-                <div className="p-4 pt-1 space-y-3 text-xs border-t border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/40">
-                  <p className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    Looked up{" "}
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-200">
-                      Reset Password
-                    </span>{" "}
-                    in documentation. Followed the standard account recovery policy.
-                  </p>
-
-                  <div className="rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-3 space-y-1.5 shadow-2xs">
-                    <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                      <span className="font-mono">account-recovery.md</span>
-                      <span className="text-emerald-500 font-medium">98% relevance</span>
+            ) : (
+              activeConversation.messages.map((m) => {
+                if (m.sender === "system") {
+                  return (
+                    <div key={m.id} className="flex justify-center my-2">
+                      <span className="text-[11px] px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 border border-zinc-200/50 dark:border-zinc-700/50">
+                        {m.text}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 italic">
-                      &quot;Users can reset their password via email OTP or by visiting the account settings page and verifying their email.&quot;
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+                  )
+                }
 
-            {/* Agent / Operator replies in stream */}
-            {activeConversation.messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex flex-col ${
-                  m.sender === "operator" ? "items-end" : "items-start"
-                }`}
-              >
-                <div className="flex items-center gap-1.5 mb-1 px-1">
-                  <span className="text-[10px] text-zinc-400">
-                    {m.senderName || (m.sender === "operator" ? "Operator" : "Agent")}
-                  </span>
-                  <span className="text-[10px] text-zinc-400">• {m.timestamp}</span>
-                </div>
-                <div
-                  className={`rounded-2xl px-4 py-2.5 text-xs max-w-lg leading-relaxed shadow-xs ${
-                    m.sender === "operator"
-                      ? "bg-blue-600 text-white rounded-tr-sm"
-                      : "bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-tl-sm"
-                  }`}
-                >
-                  {m.text}
-                </div>
-              </div>
-            ))}
+                if (m.sender === "operator") {
+                  return (
+                    <div key={m.id} className="flex flex-col items-end">
+                      <div className="flex items-center gap-1.5 mb-1 px-1">
+                        <span className="text-[10px] text-zinc-400">
+                          {m.senderName || "Operator"}
+                        </span>
+                        <span className="text-[10px] text-zinc-400">• {m.timestamp}</span>
+                      </div>
+                      <div className="rounded-2xl rounded-tr-sm bg-blue-600 text-white px-4 py-2.5 text-xs max-w-lg leading-relaxed shadow-xs whitespace-pre-wrap">
+                        {m.text}
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (m.sender === "visitor") {
+                  return (
+                    <div key={m.id} className="flex items-start gap-3 max-w-xl">
+                      <div className="size-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm shadow-xs shrink-0 mt-0.5">
+                        {activeConversation.customerName.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                            {m.senderName || activeConversation.customerName}
+                          </span>
+                          <span className="text-[10px] text-zinc-400">{m.timestamp}</span>
+                        </div>
+                        <div className="rounded-2xl rounded-tl-sm bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 px-4 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 font-medium shadow-xs whitespace-pre-wrap">
+                          {m.text}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
+                // AI / Agent message
+                const hasCitations = (m.citations && m.citations.length > 0) || Boolean(m.source)
+                return (
+                  <div key={m.id} className="flex flex-col items-start max-w-2xl space-y-2">
+                    <div className="flex items-center gap-1.5 px-1">
+                      <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <Sparkles className="size-3" />
+                        {m.senderName || "AI Agent"}
+                      </span>
+                      <span className="text-[10px] text-zinc-400">• {m.timestamp}</span>
+                    </div>
+
+                    <div className="rounded-2xl rounded-tl-sm bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 px-4 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 leading-relaxed shadow-xs whitespace-pre-wrap">
+                      {m.text}
+                    </div>
+
+                    {/* Citations & Grounding pill if available */}
+                    {hasCitations && (
+                      <div className="ml-1 w-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/40 p-2.5 space-y-1.5 text-xs">
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
+                          <FileText className="size-3 text-blue-500" />
+                          <span>Grounded in Knowledge Base</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {m.citations && m.citations.length > 0 ? (
+                            m.citations.map((c, i) => (
+                              <span
+                                key={i}
+                                title={typeof c === "string" ? "" : c.snippet || ""}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[10px] font-mono text-zinc-600 dark:text-zinc-300"
+                              >
+                                📄{" "}
+                                {typeof c === "string"
+                                  ? c
+                                  : c.title || `Doc #${i + 1}`}
+                              </span>
+                            ))
+                          ) : m.source ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[10px] font-mono text-zinc-600 dark:text-zinc-300">
+                              📄 {m.source}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
           </div>
 
           {/* Composer Box */}
           <footer className="p-4 border-t border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-[#111114]">
+            {actionError ? (
+              <p role="alert" className="mb-2 text-xs text-red-600 dark:text-red-400">
+                {actionError}
+              </p>
+            ) : null}
             <form onSubmit={handleSendMessage} className="relative">
               <textarea
                 rows={2}
@@ -520,7 +492,7 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
           {/* Customer Avatar & Name */}
           <div className="flex items-center gap-3">
             <div className="size-11 rounded-full bg-orange-500 text-white flex items-center justify-center text-lg shadow-xs shrink-0">
-              😊
+              {activeConversation.customerName.slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0">
               <h5 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
@@ -550,29 +522,52 @@ export function OperatorInbox({ hideNavRail = false }: OperatorInboxProps) {
               <div className="flex justify-between">
                 <span className="text-zinc-400">Local time</span>
                 <div className="text-right">
-                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">12:27</span>
-                  <span className="block text-[10px] text-zinc-400">Europe/Berlin</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {metadataText(activeConversation.metadata?.localTime)}
+                  </span>
+                  <span className="block text-[10px] text-zinc-400">
+                    {metadataText(activeConversation.metadata?.timezone)}
+                  </span>
                 </div>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">Language</span>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">American English</span>
+                <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                  {metadataText(activeConversation.metadata?.language)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">Device</span>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">Desktop</span>
+                <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                  {metadataText(activeConversation.metadata?.device)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">Browser</span>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">Chrome</span>
+                <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                  {metadataText(activeConversation.metadata?.browser)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">System</span>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">Mac OS</span>
+                <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                  {metadataText(activeConversation.metadata?.os)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">Came from</span>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">Direct visit</span>
+                <span
+                  className="max-w-[140px] truncate font-medium text-zinc-800 dark:text-zinc-200"
+                  title={
+                    typeof activeConversation.metadata?.cameFrom === "string"
+                      ? activeConversation.metadata.cameFrom
+                      : "Direct visit"
+                  }
+                >
+                  {typeof activeConversation.metadata?.cameFrom === "string"
+                    ? activeConversation.metadata.cameFrom
+                    : "Direct visit"}
+                </span>
               </div>
             </div>
           </div>

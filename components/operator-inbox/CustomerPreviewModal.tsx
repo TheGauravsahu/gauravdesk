@@ -35,7 +35,9 @@ export function CustomerPreviewModal({
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="size-2 rounded-full bg-emerald-500" />
-                <span className="text-[11px] text-neutral-500">Active now</span>
+                <span className="text-[11px] text-neutral-500 capitalize">
+                  {conversation.status}
+                </span>
               </div>
             </div>
           </div>
@@ -66,7 +68,7 @@ export function CustomerPreviewModal({
           {conversation.messages
             .filter((m) => m.sender !== "system")
             .map((msg) => {
-              const isCustomer = msg.sender === "customer"
+              const isCustomer = msg.sender === "visitor"
               const displayContent =
                 conversation.isAutoTranslating && msg.translatedText
                   ? msg.translatedText

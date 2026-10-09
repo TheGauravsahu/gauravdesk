@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const rows = await sql`
       SELECT 
@@ -26,6 +26,17 @@ export async function GET() {
     }
 
     const ws = rows[0]
+    if (new URL(req.url).searchParams.get("summary") === "1") {
+      return NextResponse.json({
+        id: ws.id,
+        name: ws.name,
+        agentName: ws.agent_name,
+        starterQuestions: Array.isArray(ws.starter_questions)
+          ? ws.starter_questions
+          : [],
+      })
+    }
+
     return NextResponse.json({
       id: ws.id,
       name: ws.name,

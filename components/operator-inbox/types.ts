@@ -1,7 +1,7 @@
 export interface Message {
   id: string
-  sender: "customer" | "ai" | "operator" | "system"
-  senderName: string
+  sender: "visitor" | "agent" | "operator" | "system"
+  senderName?: string
   senderAvatar?: string
   text: string
   translatedText?: string
@@ -9,6 +9,8 @@ export interface Message {
   timestamp: string
   seen?: string
   source?: string
+  citations?: Array<string | { title?: string; documentId?: string; snippet?: string }>
+  groundingMeta?: Record<string, unknown>
 }
 
 export interface CopilotData {
@@ -33,16 +35,17 @@ export interface CopilotData {
 export interface Conversation {
   id: string
   customerName: string
-  customerEmail: string
+  customerEmail: string | null
   customerAvatar?: string
   customerAvatarBg?: string
   subjectSnippet: string
-  status: "open" | "closed" | "snoozed"
+  status: "open" | "waiting" | "closed"
   lastActivity: string
   tag?: string
   language?: string
   isAutoTranslating?: boolean
   assignedTo?: string
+  metadata?: Record<string, unknown>
   messages: Message[]
   copilot: CopilotData
 }

@@ -14,8 +14,10 @@ export default function TestEmbedPage() {
     fetch("/api/workspace")
       .then((res) => res.json())
       .then((data) => {
-        if (data.workspace?.id) {
-          setWorkspaceId(data.workspace.id)
+        if (data.id) {
+          setWorkspaceId(data.id)
+        } else if (data.error) {
+          throw new Error(data.error)
         }
       })
       .catch((err) => console.error("Failed to load workspace id", err))

@@ -1,74 +1,15 @@
 import { NextResponse } from "next/server"
+import type { PDFParse as PDFParseInstance } from "pdf-parse"
 import { sql } from "@/lib/db"
+import { chunkText } from "@/lib/ai/chunking"
+import {
+  generateEmbedding,
+  generateSuggestedQuestionsFromKnowledge,
+  GeminiConfigurationError,
+} from "@/lib/ai/gemini"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
-
-/**
- * Derives dynamic suggested questions from uploaded knowledge base documents.
- * Updates automatically as documents are added or removed.
- */
-export function deriveSuggestedQuestions(
-  docs: Array<{ filename: string; extracted_text?: string | null }>
-): string[] {
-  const fallbacks = [
-    "Do you ship to Canada?",
-    "What's your refund policy?",
-    "How do I reset my password?",
-    "Which plan is right for my team?",
-  ]
-
-  if (!docs || docs.length === 0) {
-    return fallbacks
-  }
-
-  const generated: string[] = []
-
-  for (const doc of docs) {
-    const text = doc.extracted_text || ""
-    const name = doc.filename.toLowerCase()
-
-    // 1. Look for explicit questions in document text (e.g. FAQs or headers with '?')
-    const questionMatches = text.match(/([A-Z][^\.\n\r]{8,70}\?)/g)
-    if (questionMatches) {
-      for (const q of questionMatches) {
-        const clean = q.trim()
-        if (clean.length >= 12 && clean.length <= 65 && !generated.includes(clean)) {
-          generated.push(clean)
-          if (generated.length >= 4) break
-        }
-      }
-    }
-    if (generated.length >= 4) break
-
-    // 2. Synthesize smart questions from filename or contents
-    if (name.includes("refund") || name.includes("return") || text.toLowerCase().includes("refund")) {
-      generated.push("What's your refund policy?")
-    } else if (name.includes("shipping") || name.includes("delivery") || text.toLowerCase().includes("shipping")) {
-      generated.push("Do you ship to Canada?")
-    } else if (name.includes("pricing") || name.includes("billing") || name.includes("plan") || text.toLowerCase().includes("pricing")) {
-      generated.push("Which plan is right for my team?")
-    } else if (name.includes("password") || name.includes("auth") || name.includes("login") || text.toLowerCase().includes("password")) {
-      generated.push("How do I reset my password?")
-    } else if (name.includes("support") || name.includes("help") || name.includes("contact")) {
-      generated.push("How can I contact customer support?")
-    } else if (name.includes("security") || name.includes("privacy")) {
-      generated.push("How is my customer data protected?")
-    } else {
-      const baseName = doc.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ")
-      const capitalized = baseName.charAt(0).toUpperCase() + baseName.slice(1)
-      generated.push(`Can you tell me more about ${capitalized}?`)
-    }
-    if (generated.length >= 4) break
-  }
-
-  for (const fb of fallbacks) {
-    if (generated.length < 4 && !generated.includes(fb)) {
-      generated.push(fb)
-    }
-  }
-
-  return generated.slice(0, 4)
-}
+const SUPPORTED_FILE_TYPES = new Set(["pdf", "md", "txt"])
 
 export async function GET(req: Request) {
   try {
@@ -81,12 +22,7 @@ export async function GET(req: Request) {
       if (existing.length === 0) {
         return NextResponse.json({
           documents: [],
-          suggestedQuestions: [
-            "Do you ship to Canada?",
-            "What's your refund policy?",
-            "How do I reset my password?",
-            "Which plan is right for my team?",
-          ],
+          suggestedQuestions: [],
         })
       }
       workspaceId = existing[0].id
@@ -106,7 +42,19 @@ export async function GET(req: Request) {
       ORDER BY created_at DESC;
     `
 
-    const suggestedQuestions = deriveSuggestedQuestions(docs as any)
+    const workspaceRows = await sql`
+      SELECT starter_questions
+      FROM workspaces
+      WHERE id = ${workspaceId}::uuid
+      LIMIT 1;
+    `
+    const suggestedQuestions =
+      workspaceRows.length > 0 && Array.isArray(workspaceRows[0].starter_questions)
+        ? workspaceRows[0].starter_questions.filter(
+            (question: unknown): question is string =>
+              typeof question === "string"
+          )
+        : []
 
     return NextResponse.json({
       documents: docs.map((d) => ({
@@ -119,10 +67,10 @@ export async function GET(req: Request) {
       })),
       suggestedQuestions,
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error("Failed to fetch knowledge documents:", error)
     return NextResponse.json(
-      { error: error?.message || "Internal server error" },
+      { error: "Failed to fetch knowledge documents" },
       { status: 500 }
     )
   }
@@ -145,6 +93,18 @@ export async function POST(req: Request) {
       )
     }
 
+    if (file.size === 0) {
+      return NextResponse.json({ error: "The uploaded file is empty" }, { status: 400 })
+    }
+
+    const fileType = file.name.split(".").pop()?.toLowerCase() || ""
+    if (!SUPPORTED_FILE_TYPES.has(fileType)) {
+      return NextResponse.json(
+        { error: "Only PDF, Markdown (.md), and plain-text (.txt) files are supported" },
+        { status: 415 }
+      )
+    }
+
     let workspaceId = wsParam
     if (!workspaceId) {
       const existing = await sql`SELECT id FROM workspaces ORDER BY created_at ASC LIMIT 1;`
@@ -155,13 +115,55 @@ export async function POST(req: Request) {
     }
 
     // Read and extract text content from documents
-    let extractedText = ""
-    const fileType = file.name.split(".").pop()?.toLowerCase() || "unknown"
-    if (["txt", "md", "json", "csv"].includes(fileType)) {
+    let extractedText: string
+    if (fileType === "txt" || fileType === "md") {
       extractedText = await file.text()
     } else {
-      extractedText = `Indexed binary document ${file.name} (${file.size} bytes). Grounded for vector retrieval.`
+      let parser: PDFParseInstance | undefined
+      try {
+        const { PDFParse } = await import("pdf-parse")
+        const arrayBuffer = await file.arrayBuffer()
+        const uint8 = new Uint8Array(arrayBuffer)
+        parser = new PDFParse({ data: uint8 })
+        const parsed = await parser.getText()
+        extractedText = parsed.text
+      } catch (error) {
+        console.error("PDF parse error:", error)
+        return NextResponse.json(
+          { error: "Could not extract text from the uploaded PDF" },
+          { status: 422 }
+        )
+      } finally {
+        if (parser) await parser.destroy()
+      }
     }
+
+    if (!extractedText.trim()) {
+      return NextResponse.json(
+        { error: "No readable text was found in the uploaded document" },
+        { status: 422 }
+      )
+    }
+
+    const chunks = chunkText(extractedText)
+    const indexedChunks = []
+    for (const chunk of chunks) {
+      const embedding = await generateEmbedding(chunk.content)
+      if (!embedding || embedding.length !== 768) {
+        throw new Error(`Could not generate a valid embedding for ${file.name}`)
+      }
+      indexedChunks.push({ ...chunk, embedding })
+    }
+
+    const existingDocs = await sql`
+      SELECT filename, extracted_text
+      FROM knowledge_documents
+      WHERE workspace_id = ${workspaceId}::uuid;
+    `
+    const suggestedQuestions = await generateSuggestedQuestionsFromKnowledge([
+      ...existingDocs,
+      { filename: file.name, extracted_text: extractedText },
+    ])
 
     const inserted = await sql`
       INSERT INTO knowledge_documents (
@@ -185,13 +187,31 @@ export async function POST(req: Request) {
 
     const doc = inserted[0]
 
-    // Derive and automatically update suggested questions in workspace
-    const allDocs = await sql`
-      SELECT filename, extracted_text
-      FROM knowledge_documents
-      WHERE workspace_id = ${workspaceId}::uuid;
-    `
-    const suggestedQuestions = deriveSuggestedQuestions(allDocs as any)
+    try {
+      for (const chunk of indexedChunks) {
+        await sql`
+          INSERT INTO document_chunks (
+            document_id,
+            workspace_id,
+            chunk_index,
+            content,
+            embedding,
+            metadata
+          )
+          VALUES (
+            ${doc.id}::uuid,
+            ${workspaceId}::uuid,
+            ${chunk.index},
+            ${chunk.content},
+            ${`[${chunk.embedding.join(",")}]`}::vector,
+            ${JSON.stringify({ filename: doc.filename })}::jsonb
+          );
+        `
+      }
+    } catch (error) {
+      await sql`DELETE FROM knowledge_documents WHERE id = ${doc.id}::uuid;`
+      throw error
+    }
 
     await sql`
       UPDATE workspaces
@@ -211,10 +231,16 @@ export async function POST(req: Request) {
       },
       suggestedQuestions,
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error("Failed to upload knowledge document:", error)
+    if (error instanceof GeminiConfigurationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      )
+    }
     return NextResponse.json(
-      { error: error?.message || "Failed to upload document" },
+      { error: "Failed to upload document" },
       { status: 500 }
     )
   }
@@ -229,36 +255,37 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Missing document id" }, { status: 400 })
     }
 
-    const existing = await sql`SELECT workspace_id FROM knowledge_documents WHERE id = ${id}::uuid LIMIT 1;`
-    await sql`DELETE FROM knowledge_documents WHERE id = ${id}::uuid;`
-
-    let suggestedQuestions = [
-      "Do you ship to Canada?",
-      "What's your refund policy?",
-      "How do I reset my password?",
-      "Which plan is right for my team?",
-    ]
-
-    if (existing.length > 0) {
-      const workspaceId = existing[0].workspace_id
-      const remainingDocs = await sql`
-        SELECT filename, extracted_text
-        FROM knowledge_documents
-        WHERE workspace_id = ${workspaceId}::uuid;
-      `
-      suggestedQuestions = deriveSuggestedQuestions(remainingDocs as any)
-      await sql`
-        UPDATE workspaces
-        SET starter_questions = ${JSON.stringify(suggestedQuestions)}::jsonb, updated_at = NOW()
-        WHERE id = ${workspaceId}::uuid;
-      `
+    const existing = await sql`
+      SELECT workspace_id
+      FROM knowledge_documents
+      WHERE id = ${id}::uuid
+      LIMIT 1;
+    `
+    if (existing.length === 0) {
+      return NextResponse.json({ error: "Document not found" }, { status: 404 })
     }
+    const workspaceId = existing[0].workspace_id
+    const remainingDocs = await sql`
+      SELECT filename, extracted_text
+      FROM knowledge_documents
+      WHERE workspace_id = ${workspaceId}::uuid
+        AND id <> ${id}::uuid;
+    `
+    const suggestedQuestions =
+      await generateSuggestedQuestionsFromKnowledge(remainingDocs)
+
+    await sql`DELETE FROM knowledge_documents WHERE id = ${id}::uuid;`
+    await sql`
+      UPDATE workspaces
+      SET starter_questions = ${JSON.stringify(suggestedQuestions)}::jsonb, updated_at = NOW()
+      WHERE id = ${workspaceId}::uuid;
+    `
 
     return NextResponse.json({ success: true, suggestedQuestions })
-  } catch (error: any) {
+  } catch (error) {
     console.error("Failed to delete knowledge document:", error)
     return NextResponse.json(
-      { error: error?.message || "Failed to delete document" },
+      { error: "Failed to delete document" },
       { status: 500 }
     )
   }

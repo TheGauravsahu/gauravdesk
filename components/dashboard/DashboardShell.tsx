@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -9,40 +9,41 @@ import {
   Bell,
   PanelLeftClose,
   PanelLeft,
-  Sparkles,
   Bot,
+  CircleUserRound,
 } from "lucide-react"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { ChatbotCustomizer } from "./ChatbotCustomizer"
 import { OperatorInbox } from "@/components/operator-inbox/OperatorInbox"
+import type { DashboardInitialData } from "@/lib/dashboard-data"
+import { ProfileSettings, type ProfileUser } from "./ProfileSettings"
 
 interface DashboardShellProps {
-  initialTab?: "home" | "inbox"
+  initialTab?: "home" | "inbox" | "profile"
+  initialData?: DashboardInitialData | null
+  profileUser?: ProfileUser
 }
 
-export function DashboardShell({ initialTab = "home" }: DashboardShellProps) {
+export function DashboardShell({
+  initialTab = "home",
+  initialData,
+  profileUser,
+}: DashboardShellProps) {
   const pathname = usePathname()
   const router = useRouter()
 
   // Determine active view from URL or initial state
   const isInboxRoute = pathname.includes("/inbox")
-  const [activeTab, setActiveTab] = useState<"home" | "inbox">(
-    isInboxRoute ? "inbox" : initialTab
-  )
+  const isProfileRoute = pathname.includes("/profile")
+  const activeTab = isProfileRoute
+    ? "profile"
+    : isInboxRoute
+      ? "inbox"
+      : initialTab
   const [notificationsOn, setNotificationsOn] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
-  // Keep state synced with route changes
-  useEffect(() => {
-    if (pathname.includes("/inbox")) {
-      setActiveTab("inbox")
-    } else if (pathname === "/dashboard") {
-      setActiveTab("home")
-    }
-  }, [pathname])
-
   const handleTabChange = (tab: "home" | "inbox") => {
-    setActiveTab(tab)
     if (tab === "inbox") {
       router.push("/dashboard/inbox", { scroll: false })
     } else {
@@ -111,9 +112,11 @@ export function DashboardShell({ initialTab = "home" }: DashboardShellProps) {
           >
             <Inbox className="size-5" />
             {/* Unread ticket badge */}
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-4 px-1 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-[10px] font-bold grid place-items-center shadow-xs">
-              6
-            </span>
+            {(initialData?.waitingCount ?? 0) > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-4 px-1 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-[10px] font-bold grid place-items-center shadow-xs">
+                {initialData?.waitingCount}
+              </span>
+            )}
             {activeTab === "inbox" && (
               <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-600 dark:bg-blue-400" />
             )}
@@ -122,18 +125,19 @@ export function DashboardShell({ initialTab = "home" }: DashboardShellProps) {
 
         {/* User Profile Avatar at Bottom */}
         <div className="flex flex-col items-center gap-3 w-full">
-          <button
-            type="button"
-            title="Gaurav Profile"
-            className="relative size-10 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-800 grid place-items-center cursor-pointer shadow-sm ring-2 ring-transparent hover:ring-blue-500/50 transition-all border border-zinc-200 dark:border-zinc-700"
+          <Link
+            href="/dashboard/profile"
+            aria-label="Open profile"
+            aria-current={activeTab === "profile" ? "page" : undefined}
+            title="Profile"
+            className={`grid size-10 place-items-center rounded-full border transition-colors ${
+              activeTab === "profile"
+                ? "border-primary bg-background text-primary"
+                : "border-border bg-muted text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <img
-              src="https://api.dicebear.com/10.x/notionists-neutral/svg?seed=Gaurav"
-              alt="User Avatar"
-              className="size-full object-cover"
-            />
-            <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-zinc-100 dark:ring-zinc-900" />
-          </button>
+            <CircleUserRound className="size-5" />
+          </Link>
         </div>
       </aside>
 
@@ -165,7 +169,11 @@ export function DashboardShell({ initialTab = "home" }: DashboardShellProps) {
               </span>
               <span className="text-zinc-300 dark:text-zinc-700">/</span>
               <h1 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                {activeTab === "home" ? "Home — Widget" : "Inbox — Operator Conversations"}
+                {activeTab === "home"
+                  ? "Home — Widget"
+                  : activeTab === "inbox"
+                    ? "Inbox — Operator Conversations"
+                    : "Profile"}
               </h1>
             </div>
           </div>
@@ -196,10 +204,18 @@ export function DashboardShell({ initialTab = "home" }: DashboardShellProps) {
         {/* Workspace Body */}
         <div className="flex-1 overflow-hidden flex">
           {activeTab === "home" ? (
-            <ChatbotCustomizer />
-          ) : (
-            <OperatorInbox hideNavRail={true} />
-          )}
+            <ChatbotCustomizer
+              initialWorkspace={initialData?.workspace}
+              initialDocuments={initialData?.documents}
+              initialSuggestedQuestions={initialData?.suggestedQuestions}
+            />
+          ) : activeTab === "inbox" ? (
+            <OperatorInbox
+              initialConversations={initialData?.conversations}
+            />
+          ) : profileUser ? (
+            <ProfileSettings user={profileUser} />
+          ) : null}
         </div>
       </div>
     </div>

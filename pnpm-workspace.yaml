@@ -1,4 +1,6 @@
 allowBuilds:
+  '@google/genai': false
   core-js: true
+  protobufjs: false
   sharp: false
   unrs-resolver: false

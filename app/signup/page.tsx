@@ -238,6 +238,12 @@ export default function SignupPage() {
       }
 
       // Successful verification -> navigate to dashboard
+      try {
+        localStorage.setItem(
+          "gauravdesk_user",
+          JSON.stringify({ name: name.trim(), email: email.trim() })
+        )
+      } catch {}
       router.push("/dashboard")
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Code verification failed"

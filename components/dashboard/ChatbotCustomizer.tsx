@@ -1,33 +1,29 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from "react"
-import { useDropzone } from "react-dropzone"
+import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react"
+import { useDropzone, type FileRejection } from "react-dropzone"
 import {
-  Sparkles,
   UploadCloud,
   Check,
-  Send,
-  RotateCcw,
   ShieldCheck,
   ExternalLink,
-  MessageCircle,
-  ChevronDown,
   X,
-  User,
   Plus,
   Trash2,
   Copy,
   Globe,
   FileText,
-  Save,
   CheckCircle2,
   Loader2,
   FileCode,
-  BookOpen,
-  ArrowUp,
   MessageCircleQuestion,
 } from "lucide-react"
 import { toast } from "sonner"
+import { WidgetPreview } from "@/components/dashboard/WidgetPreview"
+
+const subscribeToEmbedHost = () => () => {}
+const getEmbedHostSnapshot = () => window.location.origin
+const getServerEmbedHostSnapshot = () => "https://gauravdesk.app"
 
 export interface AccentColor {
   id: string
@@ -76,89 +72,128 @@ function GlossyOrbAvatar({ className = "size-9" }: { className?: string }) {
   )
 }
 
-export function ChatbotCustomizer() {
-  const [workspaceId, setWorkspaceId] = useState("01a0ecb4-78d1-71ff-aa11-1d673314e5df")
+import type { WorkspaceInitialData, KnowledgeDocItem } from "@/lib/dashboard-data"
+
+export interface ChatbotCustomizerProps {
+  initialWorkspace?: WorkspaceInitialData | null
+  initialDocuments?: KnowledgeDocItem[]
+  initialSuggestedQuestions?: string[]
+}
+
+export function ChatbotCustomizer({
+  initialWorkspace,
+  initialDocuments,
+  initialSuggestedQuestions,
+}: ChatbotCustomizerProps = {}) {
+  const [workspaceId, setWorkspaceId] = useState(initialWorkspace?.id || "")
   const [isSaving, setIsSaving] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   // Appearance settings
-  const [agentName, setAgentName] = useState("Gaurav Desk Agent")
-  const [agentAvatar, setAgentAvatar] = useState<string | null>(null)
-  const [selectedColor, setSelectedColor] = useState<AccentColor>(ACCENT_COLORS[0])
-  const [position, setPosition] = useState<"bottom-left" | "bottom-right">("bottom-right")
-  const [greeting, setGreeting] = useState("Hi there! How can we help you today?")
-  const [starterQuestions, setStarterQuestions] = useState<string[]>([
-    "Do you ship to Canada?",
-    "What's your refund policy?",
-    "How do I reset my password?",
-    "Which plan is right for my team?",
-  ])
+  const [agentName, setAgentName] = useState(initialWorkspace?.agentName || "Gaurav Desk Agent")
+  const [agentAvatar, setAgentAvatar] = useState<string | null>(initialWorkspace?.avatarUrl || null)
+  
+  const initialColor = initialWorkspace?.accentColor
+    ? ACCENT_COLORS.find((c) => c.hex.toLowerCase() === initialWorkspace.accentColor.toLowerCase()) || ACCENT_COLORS[0]
+    : ACCENT_COLORS[0]
+  const [selectedColor, setSelectedColor] = useState<AccentColor>(initialColor)
+
+  const [position, setPosition] = useState<"bottom-left" | "bottom-right">(initialWorkspace?.position || "bottom-right")
+  const [greeting, setGreeting] = useState(initialWorkspace?.greetingMessage || "Hi there! How can we help you today?")
+  
+  const computedStarterQuestions = initialSuggestedQuestions?.length
+    ? initialSuggestedQuestions
+    : initialWorkspace?.starterQuestions?.length
+    ? initialWorkspace.starterQuestions
+    : []
+  const [starterQuestions, setStarterQuestions] = useState<string[]>(computedStarterQuestions)
 
   // Allowed domains settings
-  const [allowedDomains, setAllowedDomains] = useState<string[]>([])
+  const [allowedDomains, setAllowedDomains] = useState<string[]>(initialWorkspace?.allowedDomains || [])
   const [domainInput, setDomainInput] = useState("")
 
   // Install code snippet
   const [isCopied, setIsCopied] = useState(false)
-  const [embedHost, setEmbedHost] = useState("https://gauravdesk.app")
+  const embedHost = useSyncExternalStore(
+    subscribeToEmbedHost,
+    getEmbedHostSnapshot,
+    getServerEmbedHostSnapshot
+  )
 
   // Real knowledge base documents from Neon DB
-  const [documents, setDocuments] = useState<KnowledgeDoc[]>([])
+  const [documents, setDocuments] = useState<KnowledgeDoc[]>(initialDocuments || [])
   const [isUploadingDoc, setIsUploadingDoc] = useState(false)
 
   // Interactive live preview state
   const [isWidgetOpen, setIsWidgetOpen] = useState(true)
-  const [previewScenario, setPreviewScenario] = useState<"new" | "after">("new")
   const [mobileTab, setMobileTab] = useState<"settings" | "preview">("settings")
   const [previewMessages, setPreviewMessages] = useState<
-    Array<{ id: string; sender: "agent" | "visitor"; text: string; time: string }>
+    Array<{
+      id: string
+      sender: "agent" | "visitor"
+      text: string
+      time: string
+      citations?: string[]
+    }>
   >([
     {
       id: "initial-greeting",
       sender: "agent",
-      text: greeting,
+      text: initialWorkspace?.greetingMessage || "Hi there! How can we help you today?",
       time: "Just now",
     },
   ])
   const [visitorInput, setVisitorInput] = useState("")
   const [isTypingReply, setIsTypingReply] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [isResettingAvatar, setIsResettingAvatar] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
-  const isInitialLoadDone = useRef(false)
+  const previewVisitorId = useRef<string | null>(null)
+  const previewConversationId = useRef<string | null>(null)
+  const isInitialLoadDone = useRef(Boolean(initialWorkspace))
 
-  // Load workspace data from Neon DB
+  // Load workspace data if not provided via server SSR
   useEffect(() => {
+    if (initialWorkspace) {
+      isInitialLoadDone.current = true
+      return
+    }
+
     async function loadWorkspace() {
       try {
         const res = await fetch("/api/workspace")
-        if (res.ok) {
-          const data = await res.json()
-          if (data.id) setWorkspaceId(data.id)
-          if (data.agentName) setAgentName(data.agentName)
-          if (data.greetingMessage) {
-            setGreeting(data.greetingMessage)
-            setPreviewMessages([
-              {
-                id: "initial-greeting",
-                sender: "agent",
-                text: data.greetingMessage,
-                time: "Just now",
-              },
-            ])
-          }
-          if (data.position) setPosition(data.position)
-          if (data.starterQuestions?.length) setStarterQuestions(data.starterQuestions)
-          if (data.allowedDomains?.length) setAllowedDomains(data.allowedDomains)
-          if (data.avatarUrl) setAgentAvatar(data.avatarUrl)
-          if (data.accentColor) {
-            const match = ACCENT_COLORS.find(
-              (c) => c.hex.toLowerCase() === data.accentColor.toLowerCase()
-            )
-            if (match) setSelectedColor(match)
-          }
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data.error || "Could not load workspace settings")
         }
-      } catch (err) {
-        console.warn("Could not load initial workspace from Neon:", err)
+        if (data.id) setWorkspaceId(data.id)
+        if (data.agentName) setAgentName(data.agentName)
+        if (data.greetingMessage) {
+          setGreeting(data.greetingMessage)
+          setPreviewMessages([
+            {
+              id: "initial-greeting",
+              sender: "agent",
+              text: data.greetingMessage,
+              time: "Just now",
+            },
+          ])
+        }
+        if (data.position) setPosition(data.position)
+        setStarterQuestions(Array.isArray(data.starterQuestions) ? data.starterQuestions : [])
+        if (Array.isArray(data.allowedDomains)) setAllowedDomains(data.allowedDomains)
+        if (data.avatarUrl) setAgentAvatar(data.avatarUrl)
+        if (data.accentColor) {
+          const match = ACCENT_COLORS.find(
+            (c) => c.hex.toLowerCase() === data.accentColor.toLowerCase()
+          )
+          if (match) setSelectedColor(match)
+        }
+      } catch (error) {
+        console.error("Could not load initial workspace:", error)
+        toast.error(
+          error instanceof Error ? error.message : "Could not load workspace settings"
+        )
       } finally {
         isInitialLoadDone.current = true
         setHasUnsavedChanges(false)
@@ -168,10 +203,10 @@ export function ChatbotCustomizer() {
     async function loadDocs() {
       try {
         const res = await fetch("/api/knowledge")
+        const data = await res.json()
         if (res.ok) {
-          const data = await res.json()
           setDocuments(Array.isArray(data.documents) ? data.documents : [])
-          if (Array.isArray(data.suggestedQuestions) && data.suggestedQuestions.length) {
+          if (Array.isArray(data.suggestedQuestions)) {
             setStarterQuestions(data.suggestedQuestions)
           }
         }
@@ -180,17 +215,17 @@ export function ChatbotCustomizer() {
       }
     }
 
-    if (typeof window !== "undefined") {
-      setEmbedHost(window.location.origin)
-    }
-
     loadWorkspace()
     loadDocs()
-  }, [])
+  }, [initialWorkspace])
 
   // Auto-save effect: automatically persists all changes to Neon DB with debouncing
+  const isMountedRef = useRef(false)
   useEffect(() => {
-    if (!isInitialLoadDone.current) return
+    if (!isMountedRef.current) {
+      isMountedRef.current = true
+      return
+    }
 
     setHasUnsavedChanges(true)
 
@@ -220,7 +255,7 @@ export function ChatbotCustomizer() {
       } finally {
         setIsSaving(false)
       }
-    }, 700)
+    }, 1200)
 
     return () => clearTimeout(timer)
   }, [
@@ -288,6 +323,37 @@ export function ChatbotCustomizer() {
     if (file) {
       handleAvatarFile(file)
     }
+    e.target.value = ""
+  }
+
+  const handleResetAvatar = async () => {
+    if (isResettingAvatar) return
+
+    setIsResettingAvatar(true)
+    try {
+      const query = workspaceId
+        ? `?workspaceId=${encodeURIComponent(workspaceId)}`
+        : ""
+      const response = await fetch(`/api/avatar/upload${query}`, {
+        method: "DELETE",
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to reset avatar")
+      }
+
+      setAgentAvatar(null)
+      toast.success(
+        data.storageCleanupWarning || "Avatar reset to the default"
+      )
+    } catch (error) {
+      console.error("Avatar reset failed:", error)
+      toast.error(
+        error instanceof Error ? error.message : "Failed to reset avatar"
+      )
+    } finally {
+      setIsResettingAvatar(false)
+    }
   }
 
   // Domain management (Normalized domain extraction)
@@ -333,7 +399,7 @@ export function ChatbotCustomizer() {
   }
 
   // React-Dropzone configuration for Knowledge Base uploads (up to 10 MB)
-  const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: any[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[]) => {
     if (fileRejections.length > 0) {
       const err = fileRejections[0].errors[0]
       if (err.code === "file-too-large") {
@@ -358,20 +424,24 @@ export function ChatbotCustomizer() {
           body: formData,
         })
 
-        if (res.ok) {
-          const json = await res.json()
-          if (json.document) {
-            setDocuments((prev) => [json.document, ...prev.filter((d) => d.id !== json.document.id)])
-            if (Array.isArray(json.suggestedQuestions) && json.suggestedQuestions.length) {
-              setStarterQuestions(json.suggestedQuestions)
-            }
-            toast.success(`Uploaded "${file.name}" to Knowledge Base`)
-          }
-        } else {
-          toast.error(`Failed to upload "${file.name}"`)
+        const json = await res.json()
+        if (!res.ok) {
+          throw new Error(json.error || `Failed to upload "${file.name}"`)
         }
-      } catch (err) {
-        toast.error(`Upload error for "${file.name}"`)
+        if (!json.document) {
+          throw new Error("The upload response did not include a document")
+        }
+        setDocuments((prev) => [json.document, ...prev.filter((d) => d.id !== json.document.id)])
+        if (Array.isArray(json.suggestedQuestions)) {
+          setStarterQuestions(json.suggestedQuestions)
+        }
+        toast.success(`Uploaded "${file.name}" to Knowledge Base`)
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : `Upload error for "${file.name}"`
+        )
       } finally {
         setIsUploadingDoc(false)
       }
@@ -385,9 +455,6 @@ export function ChatbotCustomizer() {
       "application/pdf": [".pdf"],
       "text/markdown": [".md"],
       "text/plain": [".txt"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "application/json": [".json"],
-      "text/csv": [".csv"],
     },
   })
 
@@ -395,16 +462,19 @@ export function ChatbotCustomizer() {
   const handleDeleteDoc = async (id: string, name: string) => {
     try {
       const res = await fetch(`/api/knowledge?id=${id}`, { method: "DELETE" })
-      if (res.ok) {
-        const json = await res.json()
-        setDocuments((prev) => prev.filter((d) => d.id !== id))
-        if (Array.isArray(json.suggestedQuestions) && json.suggestedQuestions.length) {
-          setStarterQuestions(json.suggestedQuestions)
-        }
-        toast.success(`Removed "${name}" from Knowledge Base`)
+      const json = await res.json()
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to delete document")
       }
-    } catch (err) {
-      toast.error("Failed to delete document")
+      setDocuments((prev) => prev.filter((d) => d.id !== id))
+      if (Array.isArray(json.suggestedQuestions)) {
+        setStarterQuestions(json.suggestedQuestions)
+      }
+      toast.success(`Removed "${name}" from Knowledge Base`)
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete document"
+      )
     }
   }
 
@@ -418,9 +488,9 @@ export function ChatbotCustomizer() {
   }
 
   // Send message inside preview
-  const handleSendVisitorMessage = (textToSend?: string) => {
+  const handleSendVisitorMessage = async (textToSend?: string) => {
     const msgText = (textToSend || visitorInput).trim()
-    if (!msgText) return
+    if (!msgText || isTypingReply || !workspaceId) return
 
     const newVisitorMsg = {
       id: `vis-${Date.now()}`,
@@ -433,33 +503,58 @@ export function ChatbotCustomizer() {
     if (!textToSend) setVisitorInput("")
 
     setIsTypingReply(true)
-    setTimeout(() => {
-      let reply = `Thanks for asking about "${msgText}". Grounded exclusively from your uploaded knowledge documents.`
-      if (msgText.toLowerCase().includes("canada") || msgText.toLowerCase().includes("ship")) {
-        reply = "Yes, we ship to Canada via DHL Express and Canada Post! Delivery takes 3–5 business days."
-      } else if (msgText.toLowerCase().includes("refund")) {
-        reply = "We offer a 30-day money-back guarantee with zero hassle. Grounded via refund-policy.pdf."
-      } else if (msgText.toLowerCase().includes("password")) {
-        reply = "To reset your password, visit your login screen, click 'Forgot Password' and check your inbox for the 6-digit verification code (account-help.md)."
-      } else if (msgText.toLowerCase().includes("plan") || msgText.toLowerCase().includes("team")) {
-        reply = "For teams of 5 or more, our Growth tier includes unlimited document grounding, dedicated SLA, and real-time operator handoff."
+    try {
+      previewVisitorId.current ??= `preview_${crypto.randomUUID()}`
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          visitorId: previewVisitorId.current,
+          conversationId: previewConversationId.current,
+          message: msgText,
+          metadata: {
+            pageUrl: window.location.href,
+            cameFrom: document.referrer || "Dashboard preview",
+          },
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to send the preview message")
       }
 
+      previewConversationId.current = data.conversationId
       setPreviewMessages((prev) => [
         ...prev,
         {
           id: `agt-${Date.now()}`,
           sender: "agent",
-          text: reply,
+          text:
+            data.answer ||
+            "A human operator is handling this conversation and will reply here.",
           time: "Just now",
+          citations: data.citations,
         },
       ])
+    } catch (error) {
+      console.error("Preview chat failed:", error)
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to send the preview message"
+      )
+    } finally {
       setIsTypingReply(false)
-    }, 650)
+    }
   }
 
   // Reset preview conversation
   const handleResetPreview = () => {
+    previewConversationId.current = null
+    previewVisitorId.current = null
+    setVisitorInput("")
     setPreviewMessages([
       {
         id: "initial-greeting",
@@ -468,7 +563,6 @@ export function ChatbotCustomizer() {
         time: "Just now",
       },
     ])
-    setVisitorInput("")
     setIsTypingReply(false)
   }
 
@@ -584,7 +678,7 @@ export function ChatbotCustomizer() {
                 <div className="flex items-center gap-4">
                   {/* Current Avatar Icon or Uploaded Image */}
                   <div className="relative size-14 shrink-0 rounded-full overflow-hidden border-2 border-zinc-200 dark:border-zinc-700 shadow-md grid place-items-center bg-zinc-900">
-                    {isUploadingAvatar ? (
+                    {isUploadingAvatar || isResettingAvatar ? (
                       <Loader2 className="size-6 animate-spin text-blue-500" />
                     ) : agentAvatar ? (
                       <img
@@ -620,7 +714,7 @@ export function ChatbotCustomizer() {
                       onChange={handleAvatarInputChange}
                     />
                     <div className="size-9 rounded-lg bg-zinc-200/70 dark:bg-zinc-800 grid place-items-center text-zinc-600 dark:text-zinc-300 group-hover:scale-105 group-hover:text-blue-500 transition-all">
-                      {isUploadingAvatar ? (
+                      {isUploadingAvatar || isResettingAvatar ? (
                         <Loader2 className="size-4 animate-spin text-blue-500" />
                       ) : (
                         <UploadCloud className="size-4" />
@@ -646,13 +740,11 @@ export function ChatbotCustomizer() {
                   {agentAvatar && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setAgentAvatar(null)
-                        setHasUnsavedChanges(true)
-                      }}
+                      onClick={handleResetAvatar}
+                      disabled={isResettingAvatar || isUploadingAvatar}
                       className="text-[11px] text-rose-500 hover:text-rose-600 font-medium cursor-pointer"
                     >
-                      Reset avatar
+                      {isResettingAvatar ? "Resetting…" : "Reset avatar"}
                     </button>
                   )}
                 </div>
@@ -1102,7 +1194,7 @@ export function ChatbotCustomizer() {
 
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold border border-emerald-500/20">
-                            Indexed
+                            {doc.status}
                           </span>
                           <button
                             type="button"
@@ -1122,377 +1214,24 @@ export function ChatbotCustomizer() {
           </div>
         </div>
 
-        {/* =========================================================================
-            RIGHT COLUMN: FIXED LIVE WEBSITE PREVIEW (Pinned to the right)
-            ========================================================================= */}
-      <div
-        className={`w-full lg:w-[460px] xl:w-[500px] shrink-0 h-full flex flex-col p-4 sm:p-5 lg:p-6 bg-zinc-50/70 dark:bg-[#0c0c0e] overflow-hidden select-none ${
-          mobileTab === "settings" ? "hidden lg:flex" : "flex"
-        }`}
-      >
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              Preview
-            </h2>
-          </div>
-          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-zinc-200/90 dark:bg-zinc-800/80 border border-zinc-300/80 dark:border-zinc-700/60 text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewScenario("new")
-                handleResetPreview()
-              }}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                previewScenario === "new"
-                  ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-xs"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-              }`}
-            >
-              New visitor
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreviewScenario("after")}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                previewScenario === "after"
-                  ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-xs"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-              }`}
-            >
-              After a message
-            </button>
-          </div>
-        </div>
-
-        {/* Mock Browser Container */}
-        <div className="flex-1 min-h-0 rounded-2xl border border-zinc-200/90 dark:border-zinc-800 bg-zinc-100/70 dark:bg-zinc-950 flex flex-col shadow-2xl overflow-hidden relative">
-            
-            {/* Browser Header Bar */}
-            <div className="h-10 px-4 bg-zinc-200/80 dark:bg-zinc-900/90 border-b border-zinc-300/80 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none">
-              <div className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-full bg-rose-500/80" />
-                <span className="size-2.5 rounded-full bg-amber-500/80" />
-                <span className="size-2.5 rounded-full bg-emerald-500/80" />
-              </div>
-              
-              {/* URL Pill */}
-              <div className="px-4 py-1 rounded-full bg-white/80 dark:bg-zinc-950/80 border border-zinc-300/70 dark:border-zinc-800 text-[11px] font-mono text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5 shadow-2xs">
-                <span className="size-1.5 rounded-full bg-emerald-500" />
-                <span>yourwebsite.com</span>
-              </div>
-
-              <div className="w-10 flex justify-end">
-                <ExternalLink className="size-3.5 text-zinc-400" />
-              </div>
-            </div>
-
-            {/* Mock Website Canvas */}
-            <div className="flex-1 min-h-0 bg-white dark:bg-[#0c0c0e] relative overflow-hidden flex flex-col p-3 sm:p-4 select-none">
-              
-              {/* Mock website content background skeleton */}
-              <div className="absolute top-4 left-4 opacity-30 dark:opacity-20 space-y-4 max-w-xs pointer-events-none">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="size-6 rounded-md bg-zinc-900 dark:bg-white" />
-                  <div className="h-3 w-20 rounded bg-zinc-300 dark:bg-zinc-700" />
-                </div>
-                <div className="h-5 w-40 rounded-md bg-zinc-400 dark:bg-zinc-600" />
-                <div className="h-3 w-56 rounded bg-zinc-300 dark:bg-zinc-700" />
-                <div className="h-3 w-48 rounded bg-zinc-300 dark:bg-zinc-700" />
-              </div>
-
-              {/* FLOATING CHATBOT WIDGET AREA */}
-              <div
-                className={`relative z-20 flex-1 min-h-0 flex flex-col justify-end ${
-                  position === "bottom-left" ? "items-start" : "items-end"
-                } transition-all duration-200 w-full`}
-              >
-                {/* 1. Open Chat Window */}
-                {isWidgetOpen ? (
-                  <div className="w-full max-w-[340px] sm:max-w-[350px] h-full max-h-[440px] rounded-2xl shadow-2xl border border-zinc-200/90 dark:border-zinc-800/90 bg-[#111114] flex flex-col overflow-hidden transition-all">
-                    
-                    {/* Chat Header in Chosen Accent Color */}
-                    <div
-                      className="px-4 py-3 text-white flex items-center justify-between shrink-0 shadow-sm"
-                      style={{ backgroundColor: selectedColor.hex }}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {agentAvatar ? (
-                          <img
-                            src={agentAvatar}
-                            alt={agentName}
-                            className="size-8.5 rounded-full object-cover shrink-0 shadow-xs border border-white/30"
-                          />
-                        ) : (
-                          <GlossyOrbAvatar className="size-8.5 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-sm leading-tight text-white drop-shadow-xs truncate">
-                            {agentName || "Gaurav Desk Agent"}
-                          </h3>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="size-1.5 rounded-full bg-white/90" />
-                            <span className="text-[11px] text-white/90 font-medium">Replies right away</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Minimize Button */}
-                      <button
-                        type="button"
-                        onClick={() => setIsWidgetOpen(false)}
-                        className="p-1 rounded text-white/80 hover:text-white transition-colors cursor-pointer shrink-0"
-                        title="Minimize chat"
-                      >
-                        <ChevronDown className="size-5" />
-                      </button>
-                    </div>
-
-                    {/* Chat Body & Messages */}
-                    <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar scrollbar-none p-4 space-y-3 bg-[#0e0e11]">
-                      
-                      {/* Grounding Trust Badge */}
-                      <div className="flex justify-center pb-1">
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-700/60 bg-zinc-900/90 text-[11px] text-zinc-300 font-medium shadow-2xs">
-                          <BookOpen className="size-3 text-zinc-400" />
-                          <span>Answers only from our knowledge base</span>
-                        </div>
-                      </div>
-
-                      {/* Scenario: New visitor */}
-                      {previewScenario === "new" ? (
-                        <>
-                          {/* Agent Greeting */}
-                          <div className="flex flex-col items-start space-y-1">
-                            <span className="text-[10px] font-semibold text-zinc-400 ml-8">
-                              {agentName || "Gaurav Desk Agent"}
-                            </span>
-                            <div className="flex items-start gap-2 max-w-[90%]">
-                              {agentAvatar ? (
-                                <img src={agentAvatar} alt={agentName} className="size-6 rounded-full object-cover mt-0.5 shrink-0" />
-                              ) : (
-                                <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
-                              )}
-                              <div className="bg-[#222226] text-white text-xs leading-relaxed px-3.5 py-2.5 rounded-2xl rounded-tl-sm border border-zinc-700/40 shadow-xs">
-                                {greeting}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Dynamic Visitor & Agent message exchanges if user typed any */}
-                          {previewMessages.slice(1).map((msg) => {
-                            const isAgent = msg.sender === "agent"
-                            return (
-                              <div
-                                key={msg.id}
-                                className={`flex flex-col ${isAgent ? "items-start" : "items-end"}`}
-                              >
-                                {isAgent && (
-                                  <span className="text-[10px] font-semibold text-zinc-400 ml-8 mb-1">
-                                    {agentName}
-                                  </span>
-                                )}
-                                <div className={`flex items-start gap-2 ${isAgent ? "max-w-[90%]" : "max-w-[85%]"}`}>
-                                  {isAgent && (
-                                    agentAvatar ? (
-                                      <img src={agentAvatar} alt={agentName} className="size-6 rounded-full object-cover mt-0.5 shrink-0" />
-                                    ) : (
-                                      <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
-                                    )
-                                  )}
-                                  <div
-                                    className={`rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-xs ${
-                                      isAgent
-                                        ? "bg-[#222226] border border-zinc-700/40 text-white rounded-tl-sm"
-                                        : "text-white rounded-tr-sm"
-                                    }`}
-                                    style={!isAgent ? { backgroundColor: selectedColor.hex } : undefined}
-                                  >
-                                    {msg.text}
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-
-                          {/* Starter Suggestion Pills (Right-aligned, matching reference image) */}
-                          {previewMessages.length <= 1 && (
-                            <div className="pt-2 flex flex-col items-end gap-1.5">
-                              {starterQuestions.map((q, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => handleSendVisitorMessage(q)}
-                                  className="text-right px-3.5 py-2 rounded-xl border border-zinc-700/70 bg-[#16161a] text-zinc-200 text-xs hover:border-zinc-500 hover:bg-[#202026] transition-all cursor-pointer shadow-2xs hover:scale-[1.01]"
-                                >
-                                  {q}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        /* Scenario: After a message */
-                        <>
-                          {/* Agent Greeting */}
-                          <div className="flex flex-col items-start space-y-1">
-                            <span className="text-[10px] font-semibold text-zinc-400 ml-8">
-                              {agentName || "Gaurav Desk Agent"}
-                            </span>
-                            <div className="flex items-start gap-2 max-w-[90%]">
-                              {agentAvatar ? (
-                                <img src={agentAvatar} alt={agentName} className="size-6 rounded-full object-cover mt-0.5 shrink-0" />
-                              ) : (
-                                <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
-                              )}
-                              <div className="bg-[#222226] text-white text-xs leading-relaxed px-3.5 py-2.5 rounded-2xl rounded-tl-sm border border-zinc-700/40 shadow-xs">
-                                {greeting}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Visitor question */}
-                          <div className="flex flex-col items-end pt-1">
-                            <div
-                              className="max-w-[85%] rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-xs text-white leading-relaxed shadow-xs"
-                              style={{ backgroundColor: selectedColor.hex }}
-                            >
-                              Do you ship to Canada?
-                            </div>
-                          </div>
-
-                          {/* Grounded Agent Response */}
-                          <div className="flex flex-col items-start pt-1 space-y-1">
-                            <span className="text-[10px] font-semibold text-zinc-400 ml-8">
-                              {agentName || "Gaurav Desk Agent"}
-                            </span>
-                            <div className="flex items-start gap-2 max-w-[90%]">
-                              {agentAvatar ? (
-                                <img src={agentAvatar} alt={agentName} className="size-6 rounded-full object-cover mt-0.5 shrink-0" />
-                              ) : (
-                                <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
-                              )}
-                              <div>
-                                <div className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-xs leading-relaxed bg-[#222226] border border-zinc-700/40 text-white shadow-xs">
-                                  Yes! We ship to all Canadian provinces via standard tracked delivery (4–6 business days) or express courier. Duties & taxes are calculated at checkout so there are no surprise fees.
-                                </div>
-                                <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/50 text-[10px] text-zinc-300">
-                                  <FileText className="size-3 text-emerald-400" />
-                                  <span>Answered from shipping-zones.md</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Any extra dynamic replies */}
-                          {previewMessages.slice(1).map((msg) => {
-                            const isAgent = msg.sender === "agent"
-                            return (
-                              <div
-                                key={msg.id}
-                                className={`flex flex-col ${isAgent ? "items-start" : "items-end"}`}
-                              >
-                                {isAgent && (
-                                  <span className="text-[10px] font-semibold text-zinc-400 ml-8 mb-1">
-                                    {agentName}
-                                  </span>
-                                )}
-                                <div className={`flex items-start gap-2 ${isAgent ? "max-w-[90%]" : "max-w-[85%]"}`}>
-                                  {isAgent && (
-                                    agentAvatar ? (
-                                      <img src={agentAvatar} alt={agentName} className="size-6 rounded-full object-cover mt-0.5 shrink-0" />
-                                    ) : (
-                                      <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
-                                    )
-                                  )}
-                                  <div
-                                    className={`rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-xs ${
-                                      isAgent
-                                        ? "bg-[#222226] border border-zinc-700/40 text-white rounded-tl-sm"
-                                        : "text-white rounded-tr-sm"
-                                    }`}
-                                    style={!isAgent ? { backgroundColor: selectedColor.hex } : undefined}
-                                  >
-                                    {msg.text}
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </>
-                      )}
-
-                      {/* Typing indicator */}
-                      {isTypingReply && (
-                        <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#222226] border border-zinc-700/40 w-16">
-                          <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce" />
-                          <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.2s]" />
-                          <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.4s]" />
-                        </div>
-                      )}
-
-                      {/* Talk to a human option */}
-                      <div className="pt-2 flex justify-center">
-                        <button
-                          type="button"
-                          onClick={() => handleSendVisitorMessage("I'd like to talk to a human agent please")}
-                          className="inline-flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 font-medium cursor-pointer transition-colors"
-                        >
-                          <User className="size-3" />
-                          <span>Talk to a human</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Chat Composer */}
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        handleSendVisitorMessage()
-                      }}
-                      className="p-2.5 bg-[#121215] border-t border-zinc-800 flex items-center gap-2 shrink-0"
-                    >
-                      <input
-                        type="text"
-                        placeholder="Write a message..."
-                        value={visitorInput}
-                        onChange={(e) => setVisitorInput(e.target.value)}
-                        className="flex-1 bg-[#1c1c21] border border-zinc-700/50 focus:border-zinc-500 rounded-xl px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!visitorInput.trim()}
-                        className="size-7 rounded-full flex items-center justify-center text-white disabled:opacity-40 transition-transform active:scale-95 cursor-pointer shadow-xs shrink-0"
-                        style={{ backgroundColor: selectedColor.hex }}
-                        title="Send message"
-                      >
-                        <ArrowUp className="size-4 stroke-[2.5]" />
-                      </button>
-                    </form>
-                  </div>
-                ) : (
-                  /* 2. Floating Launcher Button when Minimized */
-                  <button
-                    type="button"
-                    onClick={() => setIsWidgetOpen(true)}
-                    aria-label="Open chatbot"
-                    className="size-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                    style={{ backgroundColor: selectedColor.hex }}
-                  >
-                    <MessageCircle className="size-6 fill-white stroke-none" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Bottom Caption matching reference */}
-            <div className="py-2 px-4 bg-zinc-100 dark:bg-zinc-900/90 border-t border-zinc-200 dark:border-zinc-800/80 text-center select-none shrink-0">
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
-                This is the widget visitors see, updated as you change settings.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+        <WidgetPreview
+          mobileTab={mobileTab}
+          widgetOpen={isWidgetOpen}
+          agentName={agentName}
+          agentAvatar={agentAvatar}
+          greeting={greeting}
+          accentColor={selectedColor.hex}
+          position={position}
+          starterQuestions={starterQuestions}
+          messages={previewMessages}
+          visitorInput={visitorInput}
+          isSending={isTypingReply}
+          host={embedHost}
+          onOpenChange={setIsWidgetOpen}
+          onInputChange={setVisitorInput}
+          onSend={handleSendVisitorMessage}
+          onReset={handleResetPreview}
+        />
+    </div>
   )
 }

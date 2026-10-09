@@ -32,8 +32,35 @@ export interface DashboardInitialData {
   waitingCount: number
 }
 
+/**
+ * Execute a Neon database query with retry on transient network or cold-start timeouts.
+ */
+async function queryWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      lastErr = err
+      const isNetworkError =
+        err?.message?.includes("fetch failed") ||
+        err?.message?.includes("ETIMEDOUT") ||
+        err?.message?.includes("ECONNRESET") ||
+        err?.name === "NeonDbError"
+
+      if (isNetworkError && attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 250))
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastErr
+}
+
 export async function getDashboardInitialData(): Promise<DashboardInitialData> {
-    const wsRows = await sql`
+  try {
+    const wsRows = await queryWithRetry(() => sql`
       SELECT 
         id, 
         name, 
@@ -49,7 +76,7 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
       FROM workspaces 
       ORDER BY created_at ASC 
       LIMIT 1;
-    `
+    `)
 
     if (wsRows.length === 0) {
       return {
@@ -64,8 +91,8 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
     const ws = wsRows[0]
     const workspaceId = ws.id
 
-    // Fetch documents
-    const docRows = await sql`
+    // Fetch documents with retry
+    const docRows = await queryWithRetry(() => sql`
       SELECT 
         id, 
         filename, 
@@ -77,9 +104,9 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
       FROM knowledge_documents
       WHERE workspace_id = ${workspaceId}::uuid
       ORDER BY created_at DESC;
-    `
+    `)
 
-    const documents: KnowledgeDocItem[] = docRows.map((d) => ({
+    const documents: KnowledgeDocItem[] = docRows.map((d: any) => ({
       id: d.id,
       filename: d.filename,
       fileSize: Number(d.file_size) || 0,
@@ -97,8 +124,8 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
           )
       : []
 
-    // Fetch conversations and messages
-    const convRows = await sql`
+    // Fetch conversations with retry
+    const convRows = await queryWithRetry(() => sql`
       SELECT 
         id, 
         workspace_id, 
@@ -115,78 +142,89 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
       FROM conversations
       WHERE workspace_id = ${workspaceId}::uuid
       ORDER BY last_activity DESC;
-    `
+    `)
+
+    // Single batched query for all messages (eliminates N+1 concurrent HTTP fetch calls)
+    const convIds = convRows.map((c: any) => c.id)
+    let allMsgRows: any[] = []
+    if (convIds.length > 0) {
+      allMsgRows = await queryWithRetry(() => sql`
+        SELECT 
+          id, 
+          conversation_id, 
+          sender, 
+          sender_name, 
+          text, 
+          citations, 
+          grounding_meta, 
+          created_at
+        FROM messages
+        WHERE conversation_id = ANY(${convIds}::uuid[])
+        ORDER BY created_at ASC;
+      `)
+    }
+
+    const messagesByConv = new Map<string, any[]>()
+    for (const m of allMsgRows) {
+      const list = messagesByConv.get(m.conversation_id) || []
+      list.push(m)
+      messagesByConv.set(m.conversation_id, list)
+    }
 
     let waitingCount = 0
-    const conversations = await Promise.all(
-      convRows.map(async (c) => {
-        if (c.tag === "Waiting") waitingCount++
+    const conversations: Conversation[] = convRows.map((c: any) => {
+      if (c.tag === "Waiting") waitingCount++
+      const msgRows = messagesByConv.get(c.id) || []
 
-        const msgRows = await sql`
-          SELECT 
-            id, 
-            conversation_id, 
-            sender, 
-            sender_name, 
-            text, 
-            citations, 
-            grounding_meta, 
-            created_at
-          FROM messages
-          WHERE conversation_id = ${c.id}::uuid
-          ORDER BY created_at ASC;
-        `
+      const timeDiff = Math.max(0, Date.now() - new Date(c.last_activity).getTime())
+      const minutesAgo = Math.floor(timeDiff / (1000 * 60))
+      const timeStr = minutesAgo < 1 ? "Just now" : `${minutesAgo}m ago`
 
-        const timeDiff = Math.max(0, Date.now() - new Date(c.last_activity).getTime())
-        const minutesAgo = Math.floor(timeDiff / (1000 * 60))
-        const timeStr = minutesAgo < 1 ? "Just now" : `${minutesAgo}m ago`
-
-        return {
-          id: c.id,
-          customerName: c.customer_name || "Visitor",
-          customerEmail: c.customer_email,
-          subjectSnippet: c.subject_snippet || "Chat conversation",
-          status: c.status,
-          tag: c.tag,
-          assignedTo: c.assigned_to,
-          metadata: c.metadata || {},
-          lastActivity: timeStr,
-          copilot: {
-            summary: c.subject_snippet || "Visitor conversation",
-            linkedSource: {
-              type: "knowledge_base" as const,
-              label: "Knowledge Base",
-            },
-            draftReply: {
-              text: "",
-              sourcesCount: 0,
-            },
+      return {
+        id: c.id,
+        customerName: c.customer_name || "Visitor",
+        customerEmail: c.customer_email,
+        subjectSnippet: c.subject_snippet || "Chat conversation",
+        status: c.status,
+        tag: c.tag,
+        assignedTo: c.assigned_to,
+        metadata: c.metadata || {},
+        lastActivity: timeStr,
+        copilot: {
+          summary: c.subject_snippet || "Visitor conversation",
+          linkedSource: {
+            type: "knowledge_base" as const,
+            label: "Knowledge Base",
           },
-          messages: msgRows.map((m) => ({
-            id: m.id,
-            sender: m.sender,
-            senderName:
-              m.sender_name ||
-              (m.sender === "operator"
-                ? "Operator"
-                : m.sender === "visitor"
-                  ? c.customer_name || "Visitor"
-                  : "Agent"),
-            text: m.text,
-            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            citations: m.citations || [],
-            groundingMeta: m.grounding_meta || {},
-          })),
-        }
-      })
-    )
+          draftReply: {
+            text: "",
+            sourcesCount: 0,
+          },
+        },
+        messages: msgRows.map((m: any) => ({
+          id: m.id,
+          sender: m.sender,
+          senderName:
+            m.sender_name ||
+            (m.sender === "operator"
+              ? "Operator"
+              : m.sender === "visitor"
+                ? c.customer_name || "Visitor"
+                : "Agent"),
+          text: m.text,
+          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          citations: m.citations || [],
+          groundingMeta: m.grounding_meta || {},
+        })),
+      }
+    })
 
     return {
       workspace: {
         id: ws.id,
         name: ws.name,
         agentName: ws.agent_name || "Gaurav Desk Agent",
-        accentColor: ws.accent_color || "#2563eb",
+        accentColor: ws.accent_color || "#ea580c",
         position: ws.position || "bottom-right",
         greetingMessage: ws.greeting_message || "Hi there! How can we help you today?",
         starterQuestions: suggestedQuestions,
@@ -200,4 +238,26 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
       conversations,
       waitingCount,
     }
+  } catch (error) {
+    console.error("Warning: Database error in getDashboardInitialData, returning safe fallback:", error)
+    return {
+      workspace: {
+        id: "01a0ecb4-78d1-71ff-aa11-1d673314e5df",
+        name: "Default Workspace",
+        agentName: "Gaurav Desk",
+        accentColor: "#ea580c",
+        position: "bottom-right",
+        greetingMessage: "Hi there! How can we help you today?",
+        starterQuestions: [],
+        allowedDomains: ["localhost:3000"],
+        agentEnabled: true,
+        avatarUrl: null,
+        avatarKey: null,
+      },
+      documents: [],
+      suggestedQuestions: [],
+      conversations: [],
+      waitingCount: 0,
+    }
+  }
 }

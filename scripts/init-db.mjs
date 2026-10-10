@@ -1,8 +1,7 @@
 import { neon } from "@neondatabase/serverless"
 
 const databaseUrl =
-  process.env.DATABASE_URL ||
-  "postgresql://gauravdesk_owner:npg_sLKm9TRkrlM2@ep-long-sun-b35r1cd8-pooler.c-4.ap-southeast-1.aws.neon.tech/gauravdesk?sslmode=require&channel_binding=require"
+  process.env.DATABASE_URL || ""
 const sql = neon(databaseUrl)
 
 async function init() {

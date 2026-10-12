@@ -18,6 +18,7 @@ import { OperatorInbox } from "@/components/operator-inbox/OperatorInbox"
 import type { DashboardInitialData } from "@/lib/dashboard-data"
 import { ProfileSettings, type ProfileUser } from "./ProfileSettings"
 import { toast } from "sonner"
+import { useGlobalLoader } from "@/components/ui/GlobalLoader"
 
 interface DashboardShellProps {
   initialTab?: "home" | "inbox" | "profile"
@@ -79,7 +80,11 @@ export function DashboardShell({
     }
   }
 
+  const { startLoading } = useGlobalLoader()
+
   const handleTabChange = (tab: "home" | "inbox") => {
+    if (tab === activeTab) return
+    startLoading()
     if (tab === "inbox") {
       router.push("/dashboard/inbox", { scroll: false })
     } else {

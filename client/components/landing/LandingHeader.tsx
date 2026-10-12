@@ -2,13 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, Loader2 } from "lucide-react";
 
 interface LandingHeaderProps {
   navItems: string[];
   activeNav: string;
   onNavigate: (item: string) => void;
   user: { name?: string | null; email?: string | null } | null;
+  isCheckingAuth?: boolean;
   onSignOut: () => void;
   mobileMenuOpen: boolean;
   setMobileMenuOpen: (open: boolean) => void;
@@ -19,6 +20,7 @@ export function LandingHeader({
   activeNav,
   onNavigate,
   user,
+  isCheckingAuth,
   onSignOut,
   mobileMenuOpen,
   setMobileMenuOpen,
@@ -85,7 +87,12 @@ export function LandingHeader({
 
           {/* Right Action */}
           <div className="shrink-0 flex items-center gap-2">
-            {user ? (
+            {isCheckingAuth ? (
+              <div className="bg-white/10 text-white rounded-full px-4 py-2 text-xs flex items-center gap-2 border border-white/15">
+                <Loader2 className="size-3.5 animate-spin text-blue-400" />
+                <span className="text-white/80 font-medium">Checking...</span>
+              </div>
+            ) : user ? (
               <div className="flex items-center gap-2">
                 <Link
                   href="/dashboard"
@@ -152,7 +159,12 @@ export function LandingHeader({
               </button>
             ))}
             <div className="pt-6 flex flex-col gap-3">
-              {user ? (
+              {isCheckingAuth ? (
+                <div className="w-full py-3 rounded-full bg-white/10 border border-white/15 flex items-center justify-center gap-2 text-sm text-white/80">
+                  <Loader2 className="size-4 animate-spin text-blue-400" />
+                  <span>Loading session...</span>
+                </div>
+              ) : user ? (
                 <>
                   <Link
                     href="/dashboard"

@@ -17,6 +17,7 @@ import { ChatbotCustomizer } from "./ChatbotCustomizer"
 import { OperatorInbox } from "@/components/operator-inbox/OperatorInbox"
 import type { DashboardInitialData } from "@/lib/dashboard-data"
 import { ProfileSettings, type ProfileUser } from "./ProfileSettings"
+import { toast } from "sonner"
 
 interface DashboardShellProps {
   initialTab?: "home" | "inbox" | "profile"
@@ -40,8 +41,43 @@ export function DashboardShell({
     : isInboxRoute
       ? "inbox"
       : initialTab
-  const [notificationsOn, setNotificationsOn] = useState(false)
+  const [notificationsOn, setNotificationsOn] = useState(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      return Notification.permission === "granted"
+    }
+    return false
+  })
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  const toggleNotifications = async () => {
+    if (typeof window === "undefined") return
+    if (!("Notification" in window)) {
+      toast.error("Browser notifications are not supported in this browser.")
+      return
+    }
+
+    if (Notification.permission === "granted") {
+      setNotificationsOn(false)
+      toast.info("Notifications muted for this session.")
+    } else {
+      try {
+        const perm = await Notification.requestPermission()
+        if (perm === "granted") {
+          setNotificationsOn(true)
+          new Notification("GauravDesk Notifications Enabled", {
+            body: "You will be alerted when new visitor conversations arrive or escalate.",
+            icon: "/assets/logo.svg",
+          })
+          toast.success("Desktop notifications enabled!")
+        } else {
+          setNotificationsOn(false)
+          toast.error("Notification permission was denied.")
+        }
+      } catch (err) {
+        toast.error("Could not request notification permission.")
+      }
+    }
+  }
 
   const handleTabChange = (tab: "home" | "inbox") => {
     if (tab === "inbox") {
@@ -183,7 +219,7 @@ export function DashboardShell({
             {/* Turn on notifications button (from reference image) */}
             <button
               type="button"
-              onClick={() => setNotificationsOn(!notificationsOn)}
+              onClick={toggleNotifications}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
                 notificationsOn
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"

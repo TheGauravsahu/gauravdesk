@@ -1,4 +1,4 @@
-import { sql } from "@/lib/db"
+import axios from "axios"
 import { notFound } from "next/navigation"
 import { EmbeddedWidgetClient } from "./EmbeddedWidgetClient"
 
@@ -8,31 +8,23 @@ interface WidgetPageProps {
   }>
 }
 
+const BACKEND_URL =
+  process.env.INTERNAL_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:4000"
+
 export default async function WidgetPage({ params }: WidgetPageProps) {
   const { workspaceId } = await params
 
   try {
-    const rows = await sql`
-      SELECT 
-        id, 
-        name, 
-        agent_name, 
-        accent_color, 
-        position, 
-        greeting_message, 
-        starter_questions, 
-        avatar_url,
-        allowed_domains
-      FROM workspaces 
-      WHERE id = ${workspaceId}::uuid
-      LIMIT 1;
-    `
+    const res = await axios.get(`${BACKEND_URL}/api/workspace/${workspaceId}`, {
+      timeout: 5000,
+    })
+    const ws = res.data
 
-    if (rows.length === 0) {
+    if (!ws || !ws.id) {
       notFound()
     }
-
-    const ws = rows[0]
 
     return (
       <EmbeddedWidgetClient

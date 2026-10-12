@@ -14,6 +14,8 @@ const inter = Inter({
   display: "swap",
 });
 
+import { Providers } from "@/components/providers/QueryProvider";
+
 export const metadata: Metadata = {
   title: "GauravDesk — AI Customer Support Grounded in Truth",
   description:
@@ -48,12 +50,28 @@ export default function RootLayout({
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+        {/* Unregister any stale ServiceWorker lingering on localhost:3000 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for (var r of registrations) {
+                    r.unregister();
+                  }
+                }).catch(function() {});
+              }
+            `,
+          }}
+        />
       </head>
       <body className="min-h-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased transition-colors duration-150">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          {children}
-          <Toaster richColors position="top-right" />
-        </ThemeProvider>
+        <Providers>
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+            {children}
+            <Toaster richColors position="top-right" />
+          </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

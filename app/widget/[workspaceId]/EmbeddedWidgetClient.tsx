@@ -11,6 +11,7 @@ import {
   Headphones,
   CheckCircle2,
 } from "lucide-react"
+import { chatApi } from "@/lib/api"
 
 interface EmbeddedWidgetClientProps {
   workspace: {
@@ -147,35 +148,32 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/chat?conversationId=${conversationId}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.status) setChatStatus(data.status)
-          if (data.tag) setChatTag(data.tag)
+        const data = await chatApi.getMessages(conversationId)
+        if (data.status) setChatStatus(data.status)
+        if (data.tag) setChatTag(data.tag)
 
-          if (Array.isArray(data.messages) && data.messages.length > 0) {
-            setMessages((prev) => {
-              const existingIds = new Set(prev.map((p) => p.id))
-              const newItems: any[] = []
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id))
+            const newItems: any[] = []
 
-              for (const m of data.messages) {
-                if (!existingIds.has(m.id)) {
-                  newItems.push({
-                    id: m.id,
-                    sender: m.sender === "operator" ? "operator" : m.sender === "visitor" ? "visitor" : "agent",
-                    senderName: m.sender_name || (m.sender === "operator" ? "Operator" : workspace.agentName),
-                    text: m.text,
-                    citation: Array.isArray(m.citations) && m.citations.length > 0 ? m.citations[0] : undefined,
-                  })
-                }
+            for (const m of data.messages) {
+              if (!existingIds.has(m.id)) {
+                newItems.push({
+                  id: m.id,
+                  sender: m.sender === "operator" ? "operator" : m.sender === "visitor" ? "visitor" : "agent",
+                  senderName: m.sender_name || (m.sender === "operator" ? "Operator" : workspace.agentName),
+                  text: m.text,
+                  citation: Array.isArray(m.citations) && m.citations.length > 0 ? m.citations[0] : undefined,
+                })
               }
+            }
 
-              if (newItems.length > 0) {
-                return [...prev, ...newItems]
-              }
-              return prev
-            })
-          }
+            if (newItems.length > 0) {
+              return [...prev, ...newItems]
+            }
+            return prev
+          })
         }
       } catch (err) {
         // silent sync error
@@ -198,40 +196,31 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
 
     try {
       const metadata = getClientMetadata()
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: workspace.id,
-          visitorId,
-          message: text,
-          conversationId,
-          metadata,
-        }),
+      const data = await chatApi.sendMessage({
+        workspaceId: workspace.id,
+        visitorId,
+        message: text,
+        conversationId,
+        metadata,
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        if (data.conversationId) {
-          setConversationId(data.conversationId)
-        }
-        if (data.status) {
-          setChatStatus(data.status)
-        }
-        if (data.answer) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `agt-${Date.now()}`,
-              sender: "agent",
-              senderName: workspace.agentName,
-              text: data.answer,
-              citation: Array.isArray(data.citations) && data.citations.length > 0 ? data.citations[0] : undefined,
-            },
-          ])
-        }
-      } else {
-        throw new Error("Failed response from agent")
+      if (data.conversationId) {
+        setConversationId(data.conversationId)
+      }
+      if (data.status) {
+        setChatStatus(data.status)
+      }
+      if (data.answer) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `agt-${Date.now()}`,
+            sender: "agent",
+            senderName: workspace.agentName,
+            text: data.answer,
+            citation: Array.isArray(data.citations) && data.citations.length > 0 ? data.citations[0] : undefined,
+          },
+        ])
       }
     } catch (err) {
       setMessages((prev) => [

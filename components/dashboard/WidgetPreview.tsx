@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react"
 import { ArrowUp, BookOpen, ExternalLink, RotateCcw, User } from "lucide-react"
+import { getDiceBearAvatar } from "@/lib/avatar"
 
 interface PreviewMessage {
   id: string
@@ -103,17 +104,11 @@ export function WidgetPreview({
                   style={{ backgroundColor: accentColor }}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    {agentAvatar ? (
-                      <img
-                        src={agentAvatar}
-                        alt=""
-                        className="size-8 shrink-0 rounded-full border border-white/30 object-cover"
-                      />
-                    ) : (
-                      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-semibold">
-                        {agentName.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
+                    <img
+                      src={agentAvatar || getDiceBearAvatar(agentName, "bottts-neutral")}
+                      alt=""
+                      className="size-8 shrink-0 rounded-full border border-white/30 object-cover bg-white/10"
+                    />
                     <span className="truncate text-sm font-semibold">
                       {agentName}
                     </span>
@@ -122,7 +117,7 @@ export function WidgetPreview({
                     type="button"
                     onClick={() => onOpenChange(false)}
                     aria-label="Minimize chat preview"
-                    className="rounded p-1 text-white/80 transition-colors hover:text-white"
+                    className="rounded p-1 text-white/80 transition-colors hover:text-white cursor-pointer"
                   >
                     <span aria-hidden="true">⌄</span>
                   </button>
@@ -137,13 +132,11 @@ export function WidgetPreview({
                   </div>
 
                   <div className="flex items-start gap-2">
-                    {agentAvatar ? (
-                      <img
-                        src={agentAvatar}
-                        alt=""
-                        className="mt-0.5 size-6 shrink-0 rounded-full object-cover"
-                      />
-                    ) : null}
+                    <img
+                      src={agentAvatar || getDiceBearAvatar(agentName, "bottts-neutral")}
+                      alt=""
+                      className="mt-0.5 size-6 shrink-0 rounded-full object-cover bg-white/10"
+                    />
                     <div className="rounded-2xl rounded-tl-sm border border-zinc-700/40 bg-[#222226] px-3.5 py-2.5 text-xs leading-relaxed text-white">
                       {greeting}
                     </div>
@@ -177,7 +170,22 @@ export function WidgetPreview({
                     )
                   })}
 
-                  {messages.length === 1 ? (
+                  {isSending && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <img
+                        src={agentAvatar || getDiceBearAvatar(agentName, "bottts-neutral")}
+                        alt=""
+                        className="size-6 shrink-0 rounded-full object-cover bg-white/10"
+                      />
+                      <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-zinc-700/40 bg-[#222226] px-3.5 py-2.5">
+                        <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.3s]" />
+                        <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.15s]" />
+                        <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce" />
+                      </div>
+                    </div>
+                  )}
+
+                  {messages.length === 1 && !isSending ? (
                     <div className="flex flex-col items-end gap-1.5 pt-2">
                       {starterQuestions.map((starterQuestion) => (
                         <button
@@ -185,7 +193,7 @@ export function WidgetPreview({
                           type="button"
                           disabled={isSending}
                           onClick={() => onSend(starterQuestion)}
-                          className="rounded-xl border border-zinc-700/70 bg-[#16161a] px-3.5 py-2 text-right text-xs text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-[#202026] disabled:opacity-50"
+                          className="rounded-xl border border-zinc-700/70 bg-[#16161a] px-3.5 py-2 text-right text-xs text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-[#202026] disabled:opacity-50 cursor-pointer"
                         >
                           {starterQuestion}
                         </button>

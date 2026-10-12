@@ -6,6 +6,7 @@ import {
   Conversation,
   Message,
 } from "./types"
+import { conversationsApi } from "@/lib/api"
 import { CustomerPreviewModal } from "./CustomerPreviewModal"
 import {
   ConversationFilter,
@@ -21,6 +22,7 @@ import {
   PanelRightOpen,
   MessageSquare,
 } from "lucide-react"
+import { getDiceBearAvatar } from "@/lib/avatar"
 
 function metadataText(value: unknown) {
   return typeof value === "string" && value.trim() ? value : "Not captured"
@@ -38,11 +40,7 @@ export function OperatorInbox({
   const [conversations, setConversations] = useState<Conversation[]>(
     initialConversations || []
   )
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initialConversations && initialConversations.length > 0
-      ? initialConversations[0].id
-      : null
-  )
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<ConversationFilter>("all")
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [replyText, setReplyText] = useState<string>("")
@@ -53,21 +51,18 @@ export function OperatorInbox({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  // Fetch real conversations from DB
+  // Fetch real conversations from Fastify backend using conversationsApi
   const fetchConversations = React.useCallback(async (silent = false) => {
     try {
-      const res = await fetch("/api/conversations")
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load conversations")
-      }
+      const data = await conversationsApi.getAll()
       if (!Array.isArray(data.conversations)) {
         throw new Error("The conversations response was invalid")
       }
       setConversations(data.conversations)
       setSelectedId((curr) => {
+        // Only keep current selection if it still exists; otherwise keep null
         if (curr && data.conversations.some((c: Conversation) => c.id === curr)) return curr
-        return data.conversations.length > 0 ? data.conversations[0].id : null
+        return null
       })
       setLoadError(null)
     } catch (error) {
@@ -85,18 +80,34 @@ export function OperatorInbox({
     void fetchConversations()
   }
 
+  const prevWaitingCountRef = React.useRef(0)
+
   React.useEffect(() => {
     const initialFetch = setTimeout(() => {
       void fetchConversations()
     }, 0)
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") fetchConversations(true)
-    }, 5000)
+    }, 3000)
     return () => {
       clearTimeout(initialFetch)
       clearInterval(timer)
     }
   }, [fetchConversations])
+
+  // Desktop alert notification when new conversation escalates
+  React.useEffect(() => {
+    const currentWaiting = conversations.filter((c) => c.tag === "Waiting").length
+    if (currentWaiting > prevWaitingCountRef.current) {
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        new Notification("New Customer Waiting!", {
+          body: "A website visitor requested human assistance or needs your takeover.",
+          icon: "/assets/logo.svg",
+        })
+      }
+    }
+    prevWaitingCountRef.current = currentWaiting
+  }, [conversations])
 
   // Active selected conversation
   const activeConversation = selectedId
@@ -157,19 +168,11 @@ export function OperatorInbox({
 
     setIsSending(true)
     try {
-      const response = await fetch("/api/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId,
-          replyText: trimmed,
-          operatorName: "Operator",
-        }),
+      await conversationsApi.reply({
+        conversationId,
+        replyText: trimmed,
+        operatorName: "Operator",
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to send reply")
-      }
       setReplyText("")
       await fetchConversations(true)
     } catch (error) {
@@ -204,18 +207,10 @@ export function OperatorInbox({
     )
 
     try {
-      const response = await fetch("/api/conversations", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: selectedId,
-          status: nextStatus,
-        }),
+      await conversationsApi.updateStatus({
+        conversationId: selectedId,
+        status: nextStatus,
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update conversation")
-      }
       await fetchConversations(true)
     } catch (error) {
       console.error("Failed to toggle status", error)
@@ -269,9 +264,11 @@ export function OperatorInbox({
           <header className="h-14 px-5 border-b border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between shrink-0 bg-white/90 dark:bg-[#111114]/90 backdrop-blur-md z-10">
             <div className="flex items-center gap-3 truncate">
               {/* Customer Avatar */}
-              <div className="size-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm shadow-xs shrink-0">
-                {activeConversation.customerName.slice(0, 1).toUpperCase()}
-              </div>
+              <img
+                src={getDiceBearAvatar(activeConversation.customerName || activeConversation.id)}
+                alt=""
+                className="size-8 rounded-full bg-zinc-200 dark:bg-zinc-800 object-cover shadow-xs shrink-0 border border-zinc-200/50 dark:border-zinc-700/50"
+              />
 
               <div className="truncate">
                 <div className="flex items-center gap-2">
@@ -368,9 +365,11 @@ export function OperatorInbox({
                 if (m.sender === "visitor") {
                   return (
                     <div key={m.id} className="flex items-start gap-3 max-w-xl">
-                      <div className="size-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm shadow-xs shrink-0 mt-0.5">
-                        {activeConversation.customerName.slice(0, 1).toUpperCase()}
-                      </div>
+                      <img
+                        src={getDiceBearAvatar(m.senderName || activeConversation.customerName)}
+                        alt=""
+                        className="size-8 rounded-full bg-zinc-200 dark:bg-zinc-800 object-cover shadow-xs shrink-0 mt-0.5 border border-zinc-200/50 dark:border-zinc-700/50"
+                      />
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
@@ -491,9 +490,11 @@ export function OperatorInbox({
 
           {/* Customer Avatar & Name */}
           <div className="flex items-center gap-3">
-            <div className="size-11 rounded-full bg-orange-500 text-white flex items-center justify-center text-lg shadow-xs shrink-0">
-              {activeConversation.customerName.slice(0, 1).toUpperCase()}
-            </div>
+            <img
+              src={getDiceBearAvatar(activeConversation.customerName || activeConversation.id)}
+              alt=""
+              className="size-11 rounded-full bg-zinc-200 dark:bg-zinc-800 object-cover shadow-xs shrink-0 border border-zinc-200/50 dark:border-zinc-700/50"
+            />
             <div className="min-w-0">
               <h5 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
                 {activeConversation.customerName}

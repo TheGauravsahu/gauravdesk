@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { WidgetPreview } from "@/components/dashboard/WidgetPreview"
+import { workspaceApi, knowledgeApi, avatarApi, chatApi } from "@/lib/api"
 
 const subscribeToEmbedHost = () => () => {}
 const getEmbedHostSnapshot = () => window.location.origin
@@ -161,11 +162,7 @@ export function ChatbotCustomizer({
 
     async function loadWorkspace() {
       try {
-        const res = await fetch("/api/workspace")
-        const data = await res.json()
-        if (!res.ok) {
-          throw new Error(data.error || "Could not load workspace settings")
-        }
+        const data = await workspaceApi.get()
         if (data.id) setWorkspaceId(data.id)
         if (data.agentName) setAgentName(data.agentName)
         if (data.greetingMessage) {
@@ -202,16 +199,15 @@ export function ChatbotCustomizer({
 
     async function loadDocs() {
       try {
-        const res = await fetch("/api/knowledge")
-        const data = await res.json()
-        if (res.ok) {
+        const data = await knowledgeApi.get()
+        if (data) {
           setDocuments(Array.isArray(data.documents) ? data.documents : [])
           if (Array.isArray(data.suggestedQuestions)) {
             setStarterQuestions(data.suggestedQuestions)
           }
         }
       } catch (err) {
-        console.warn("Could not load knowledge docs from Neon:", err)
+        console.warn("Could not load knowledge docs from Fastify backend:", err)
       }
     }
 
@@ -232,24 +228,17 @@ export function ChatbotCustomizer({
     const timer = setTimeout(async () => {
       try {
         setIsSaving(true)
-        const res = await fetch("/api/workspace", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentName,
-            accentColor: selectedColor.hex,
-            position,
-            greetingMessage: greeting,
-            starterQuestions,
-            allowedDomains,
-            agentEnabled: true,
-            avatarUrl: agentAvatar,
-          }),
+        await workspaceApi.update({
+          agentName,
+          accentColor: selectedColor.hex,
+          position,
+          greetingMessage: greeting,
+          starterQuestions,
+          allowedDomains,
+          agentEnabled: true,
+          avatarUrl: agentAvatar,
         })
-
-        if (res.ok) {
-          setHasUnsavedChanges(false)
-        }
+        setHasUnsavedChanges(false)
       } catch (err) {
         console.error("Auto-save failed:", err)
       } finally {
@@ -295,24 +284,14 @@ export function ChatbotCustomizer({
         formData.append("workspaceId", workspaceId)
       }
 
-      const res = await fetch("/api/avatar/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        if (data.avatarUrl) {
-          setAgentAvatar(data.avatarUrl)
-          toast.success("Avatar uploaded!")
-        }
-      } else {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err.error || "Failed to upload avatar")
+      const data = await avatarApi.upload(formData)
+      if (data.avatarUrl) {
+        setAgentAvatar(data.avatarUrl)
+        toast.success("Avatar uploaded!")
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Avatar upload error:", error)
-      toast.error("Network error uploading avatar")
+      toast.error(error?.response?.data?.error || error.message || "Failed to upload avatar")
     } finally {
       setIsUploadingAvatar(false)
     }
@@ -331,17 +310,7 @@ export function ChatbotCustomizer({
 
     setIsResettingAvatar(true)
     try {
-      const query = workspaceId
-        ? `?workspaceId=${encodeURIComponent(workspaceId)}`
-        : ""
-      const response = await fetch(`/api/avatar/upload${query}`, {
-        method: "DELETE",
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to reset avatar")
-      }
-
+      const data = await avatarApi.delete(workspaceId || undefined)
       setAgentAvatar(null)
       toast.success(
         data.storageCleanupWarning || "Avatar reset to the default"
@@ -419,15 +388,7 @@ export function ChatbotCustomizer({
           formData.append("workspaceId", workspaceId)
         }
 
-        const res = await fetch("/api/knowledge", {
-          method: "POST",
-          body: formData,
-        })
-
-        const json = await res.json()
-        if (!res.ok) {
-          throw new Error(json.error || `Failed to upload "${file.name}"`)
-        }
+        const json = await knowledgeApi.upload(formData)
         if (!json.document) {
           throw new Error("The upload response did not include a document")
         }
@@ -436,11 +397,11 @@ export function ChatbotCustomizer({
           setStarterQuestions(json.suggestedQuestions)
         }
         toast.success(`Uploaded "${file.name}" to Knowledge Base`)
-      } catch (error) {
+      } catch (error: any) {
         toast.error(
-          error instanceof Error
-            ? error.message
-            : `Upload error for "${file.name}"`
+          error?.response?.data?.error ||
+          error.message ||
+          `Upload error for "${file.name}"`
         )
       } finally {
         setIsUploadingDoc(false)
@@ -461,11 +422,7 @@ export function ChatbotCustomizer({
   // Delete knowledge document
   const handleDeleteDoc = async (id: string, name: string) => {
     try {
-      const res = await fetch(`/api/knowledge?id=${id}`, { method: "DELETE" })
-      const json = await res.json()
-      if (!res.ok) {
-        throw new Error(json.error || "Failed to delete document")
-      }
+      const json = await knowledgeApi.delete(id)
       setDocuments((prev) => prev.filter((d) => d.id !== id))
       if (Array.isArray(json.suggestedQuestions)) {
         setStarterQuestions(json.suggestedQuestions)
@@ -506,24 +463,16 @@ export function ChatbotCustomizer({
     try {
       previewVisitorId.current ??= `preview_${crypto.randomUUID()}`
 
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          visitorId: previewVisitorId.current,
-          conversationId: previewConversationId.current,
-          message: msgText,
-          metadata: {
-            pageUrl: window.location.href,
-            cameFrom: document.referrer || "Dashboard preview",
-          },
-        }),
+      const data = await chatApi.sendMessage({
+        workspaceId,
+        visitorId: previewVisitorId.current,
+        conversationId: previewConversationId.current,
+        message: msgText,
+        metadata: {
+          pageUrl: window.location.href,
+          cameFrom: document.referrer || "Dashboard preview",
+        },
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to send the preview message")
-      }
 
       previewConversationId.current = data.conversationId
       setPreviewMessages((prev) => [

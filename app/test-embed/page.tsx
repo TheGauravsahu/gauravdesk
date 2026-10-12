@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react"
 import Script from "next/script"
 import Link from "next/link"
 import { ArrowLeft, ExternalLink, Sparkles, CheckCircle2 } from "lucide-react"
+import { workspaceApi } from "@/lib/api"
 
 export default function TestEmbedPage() {
   const [workspaceId, setWorkspaceId] = useState<string>("")
@@ -11,13 +12,11 @@ export default function TestEmbedPage() {
 
   useEffect(() => {
     setMounted(true)
-    fetch("/api/workspace")
-      .then((res) => res.json())
+    workspaceApi
+      .get()
       .then((data) => {
         if (data.id) {
           setWorkspaceId(data.id)
-        } else if (data.error) {
-          throw new Error(data.error)
         }
       })
       .catch((err) => console.error("Failed to load workspace id", err))

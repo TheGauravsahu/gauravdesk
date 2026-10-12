@@ -2,6 +2,7 @@
 
 import { Inbox, Search } from "lucide-react"
 import type { Conversation } from "./types"
+import { getDiceBearAvatar } from "@/lib/avatar"
 
 export type ConversationFilter = "all" | "waiting" | "agent" | "you" | "closed"
 
@@ -99,7 +100,19 @@ export function ConversationListPanel({
         </p>
       ) : null}
 
-      {conversations.length === 0 ? (
+      {isLoading && conversations.length === 0 ? (
+        <div className="flex-1 p-3 space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-zinc-200/50 dark:border-zinc-800/40 animate-pulse">
+              <div className="size-9 rounded-full bg-zinc-200 dark:bg-zinc-800 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-1/3 bg-zinc-200 dark:bg-zinc-800 rounded" />
+                <div className="h-2.5 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : conversations.length === 0 ? (
         <div className="flex flex-1 select-none flex-col items-center justify-center p-6 text-center">
           <div className="mb-3 flex size-10 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 text-zinc-500 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
             <Inbox className="size-5" />
@@ -107,9 +120,7 @@ export function ConversationListPanel({
           <h3 className="mb-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
             {loadError
               ? "Couldn't load conversations"
-              : isLoading
-                ? "Loading conversations…"
-                : "No conversations yet"}
+              : "No conversations yet"}
           </h3>
           <p className="mb-4 max-w-[210px] text-center text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
             {loadError ||
@@ -119,11 +130,11 @@ export function ConversationListPanel({
             <button
               type="button"
               onClick={onRetry}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 cursor-pointer"
             >
               Retry
             </button>
-          ) : !isLoading ? (
+          ) : (
             <button
               type="button"
               onClick={onInstallWidget}
@@ -134,7 +145,7 @@ export function ConversationListPanel({
               </span>
               <span>Install the widget</span>
             </button>
-          ) : null}
+          )}
         </div>
       ) : (
         <div className="flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-zinc-800/40">
@@ -157,9 +168,11 @@ export function ConversationListPanel({
                 {isSelected ? (
                   <span className="absolute bottom-0 left-0 top-0 w-1 rounded-r-full bg-zinc-900 dark:bg-white" />
                 ) : null}
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-zinc-500 text-xs font-semibold text-white shadow-xs">
-                  {conversation.customerName.slice(0, 1).toUpperCase()}
-                </span>
+                <img
+                  src={getDiceBearAvatar(conversation.customerName || conversation.id)}
+                  alt=""
+                  className="size-9 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-800 object-cover shadow-xs border border-zinc-200/50 dark:border-zinc-700/50"
+                />
                 <span className="min-w-0 flex-1">
                   <span className="mb-0.5 flex items-center justify-between gap-1">
                     <span

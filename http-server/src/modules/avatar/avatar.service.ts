@@ -3,8 +3,10 @@ import { config } from "../../config/env.js"
 import {
   S3Client,
   PutObjectCommand,
+  GetObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 export class AvatarService {
   async uploadAvatar({
@@ -27,14 +29,18 @@ export class AvatarService {
     }
 
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_")
-    const objectKey = `avatars/${Date.now()}-${sanitizedFilename}`
+    const objectKey = `uploads/${Date.now()}-${sanitizedFilename}`
     let avatarUrl = ""
 
     const s3Endpoint = config.aws.endpointUrlS3
     const s3AccessKeyId = config.aws.accessKeyId
     const s3SecretAccessKey = config.aws.secretAccessKey
     const s3Region = config.aws.region
-    const bucketName = config.aws.bucket
+    const bucketName =
+      process.env.NEON_OBJECT_STORAGE_BUCKET ||
+      process.env.AWS_BUCKET ||
+      config.aws.bucket ||
+      "assets"
 
     if (s3Endpoint && s3AccessKeyId && s3SecretAccessKey) {
       try {
@@ -54,11 +60,17 @@ export class AvatarService {
             Key: objectKey,
             Body: file,
             ContentType: mimetype,
-            CacheControl: "public, max-age=31536000, immutable",
           })
         )
 
-        avatarUrl = `${s3Endpoint.replace(/\/$/, "")}/${bucketName}/${objectKey}`
+        avatarUrl = await getSignedUrl(
+          s3,
+          new GetObjectCommand({
+            Bucket: bucketName,
+            Key: objectKey,
+          }),
+          { expiresIn: 604800 }
+        )
       } catch (s3Error) {
         console.error("Neon S3 upload failed, falling back to data URL:", s3Error)
         const base64 = file.toString("base64")
@@ -143,7 +155,11 @@ export class AvatarService {
         })
         await s3.send(
           new DeleteObjectCommand({
-            Bucket: config.aws.bucket,
+            Bucket:
+              process.env.NEON_OBJECT_STORAGE_BUCKET ||
+              process.env.AWS_BUCKET ||
+              config.aws.bucket ||
+              "assets",
             Key: avatarKey,
           })
         )

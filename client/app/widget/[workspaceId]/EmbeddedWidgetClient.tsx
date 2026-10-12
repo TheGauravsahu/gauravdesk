@@ -14,6 +14,7 @@ import { chatApi } from "@/lib/api"
 import { GlossyOrbAvatar } from "@/components/ui/GlossyOrbAvatar"
 
 interface EmbeddedWidgetClientProps {
+  host?: string
   workspace: {
     id: string
     name: string
@@ -23,6 +24,7 @@ interface EmbeddedWidgetClientProps {
     greetingMessage: string
     starterQuestions: string[]
     avatarUrl?: string | null
+    allowedDomains?: string[]
   }
 }
 
@@ -52,8 +54,9 @@ function getClientMetadata() {
   }
 }
 
-export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
+export function EmbeddedWidgetClient({ host, workspace }: EmbeddedWidgetClientProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
   const [messages, setMessages] = useState<
     Array<{ id: string; sender: "agent" | "visitor" | "operator"; senderName?: string; text: string; citation?: string }>
   >([
@@ -73,6 +76,63 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const isLeft = workspace.position === "bottom-left"
+
+  // Enforce allowed domains for embedded widget
+  useEffect(() => {
+    const isEmbedded = typeof window !== "undefined" && window.self !== window.top
+
+    if (!isEmbedded) {
+      setIsAuthorized(true)
+      return
+    }
+
+    let targetHost = host || ""
+    if (!targetHost && typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search)
+      targetHost = urlParams.get("host") || ""
+    }
+    if (!targetHost && typeof document !== "undefined" && document.referrer) {
+      try {
+        targetHost = new URL(document.referrer).hostname
+      } catch {}
+    }
+
+    const allowedList = workspace.allowedDomains || []
+
+    const isDomainAllowed = (target: string, allowed: string[]) => {
+      if (!allowed || allowed.length === 0) return false
+      if (!target) return false
+      const cleanTarget = target.trim().toLowerCase().split(":")[0]
+      return allowed.some((item) => {
+        let cleanAllowed = item.trim().toLowerCase()
+        cleanAllowed = cleanAllowed.replace(/^(?:https?:\/\/)?(?:www\.)?/i, "").split("/")[0].split(":")[0]
+        if (!cleanAllowed) return false
+        if (cleanTarget === cleanAllowed) return true
+        if (cleanAllowed.startsWith("*.")) {
+          const root = cleanAllowed.slice(2)
+          return cleanTarget === root || cleanTarget.endsWith("." + root)
+        }
+        if (cleanTarget.endsWith("." + cleanAllowed)) return true
+        return false
+      })
+    }
+
+    if (!isDomainAllowed(targetHost, allowedList)) {
+      setIsAuthorized(false)
+      if (typeof window !== "undefined" && window.parent) {
+        window.parent.postMessage(
+          {
+            type: "gauravdesk:unauthorized",
+            host: targetHost,
+            reason: "Domain not allowed in workspace settings",
+          },
+          "*"
+        )
+      }
+    } else {
+      setIsAuthorized(true)
+    }
+  }, [host, workspace.allowedDomains])
 
   // Update initial message when workspace data loads
   useEffect(() => {
@@ -244,6 +304,10 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
   }
 
   const isHumanEscalated = chatStatus === "waiting" || chatTag === "Waiting" || chatTag === "You"
+
+  if (isAuthorized === false) {
+    return null
+  }
 
   return (
     <div className="fixed inset-0 w-full h-full flex flex-col overflow-hidden bg-transparent select-none">

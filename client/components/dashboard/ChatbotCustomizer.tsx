@@ -17,6 +17,7 @@ import {
   Loader2,
   FileCode,
   MessageCircleQuestion,
+  RefreshCw,
 } from "lucide-react"
 import { toast } from "sonner"
 import { WidgetPreview } from "@/components/dashboard/WidgetPreview"
@@ -129,6 +130,7 @@ export function ChatbotCustomizer({
   const [isTypingReply, setIsTypingReply] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [isResettingAvatar, setIsResettingAvatar] = useState(false)
+  const [isRefreshingQuestions, setIsRefreshingQuestions] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const previewVisitorId = useRef<string | null>(null)
   const previewConversationId = useRef<string | null>(null)
@@ -180,10 +182,10 @@ export function ChatbotCustomizer({
 
     async function loadDocs() {
       try {
-        const data = await knowledgeApi.get()
+        const data = await knowledgeApi.get(initialWorkspace?.id)
         if (data) {
           setDocuments(Array.isArray(data.documents) ? data.documents : [])
-          if (Array.isArray(data.suggestedQuestions)) {
+          if (Array.isArray(data.suggestedQuestions) && data.suggestedQuestions.length > 0) {
             setStarterQuestions(data.suggestedQuestions)
           }
         }
@@ -303,6 +305,27 @@ export function ChatbotCustomizer({
       )
     } finally {
       setIsResettingAvatar(false)
+    }
+  }
+
+  // Handle regenerating suggested questions from knowledge base
+  const handleRefreshQuestions = async () => {
+    try {
+      setIsRefreshingQuestions(true)
+      const data = await knowledgeApi.refreshQuestions(workspaceId)
+      const questions = Array.isArray(data) ? data : data?.suggestedQuestions
+      if (Array.isArray(questions) && questions.length > 0) {
+        setStarterQuestions(questions)
+        toast.success(`Generated ${questions.length} starter questions`)
+      } else {
+        toast.info("Upload documents first to generate starter questions")
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to generate suggested questions"
+      )
+    } finally {
+      setIsRefreshingQuestions(false)
     }
   }
 
@@ -869,28 +892,45 @@ export function ChatbotCustomizer({
 
                 {/* Row 2: Suggested questions */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                       Suggested questions
                     </h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-[260px]">
                       Generated from your knowledge base and updated whenever it changes. Visitors can tap one before they&apos;ve typed anything.
                     </p>
+                    <button
+                      type="button"
+                      onClick={handleRefreshQuestions}
+                      disabled={isRefreshingQuestions || documents.length === 0}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors pt-1 cursor-pointer"
+                    >
+                      <RefreshCw className={`size-3.5 ${isRefreshingQuestions ? "animate-spin" : ""}`} />
+                      {isRefreshingQuestions ? "Generating questions..." : "Regenerate questions"}
+                    </button>
                   </div>
 
                   <div className="md:col-span-2">
                     <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/90 bg-white dark:bg-[#16161a]/80 overflow-hidden divide-y divide-zinc-200/80 dark:divide-zinc-800/80 shadow-2xs">
-                      {starterQuestions.map((q, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-3 px-4 py-3.5 text-sm text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/40 transition-colors"
-                        >
-                          <MessageCircleQuestion className="size-4 text-zinc-400 dark:text-zinc-500 shrink-0" />
-                          <span className="flex-1 text-sm font-normal text-zinc-800 dark:text-zinc-200 leading-snug">
-                            {q}
-                          </span>
+                      {starterQuestions.length > 0 ? (
+                        starterQuestions.map((q, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-3 px-4 py-3.5 text-sm text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/40 transition-colors"
+                          >
+                            <MessageCircleQuestion className="size-4 text-zinc-400 dark:text-zinc-500 shrink-0" />
+                            <span className="flex-1 text-sm font-normal text-zinc-800 dark:text-zinc-200 leading-snug">
+                              {q}
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                          {documents.length > 0
+                            ? "No questions generated yet. Click \"Regenerate questions\" above to create them from your uploaded documents."
+                            : "Upload a document above to automatically generate suggested questions."}
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 </div>

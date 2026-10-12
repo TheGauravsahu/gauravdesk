@@ -70,13 +70,21 @@ export class KnowledgeService {
         LIMIT 1;
       `,
     ]);
-    const suggestedQuestions =
+    let suggestedQuestions =
       workspaceRows.length > 0 &&
       Array.isArray(workspaceRows[0].starter_questions)
         ? workspaceRows[0].starter_questions.filter(
             (q: unknown): q is string => typeof q === "string",
           )
         : [];
+
+    // If documents are present but suggested questions are empty, auto-generate them now
+    if (suggestedQuestions.length === 0 && docs.length > 0 && wsId) {
+      const freshQuestions = await refreshSuggestedQuestions(wsId);
+      if (freshQuestions && freshQuestions.length > 0) {
+        suggestedQuestions = freshQuestions;
+      }
+    }
 
     return {
       documents: docs.map((d: any) => ({
@@ -89,6 +97,19 @@ export class KnowledgeService {
       })),
       suggestedQuestions,
     };
+  }
+
+  async refreshQuestions(workspaceId?: string) {
+    let wsId = workspaceId;
+    if (!wsId) {
+      const existing =
+        await sql`SELECT id FROM workspaces ORDER BY created_at ASC LIMIT 1;`;
+      if (existing.length === 0) {
+        return [];
+      }
+      wsId = existing[0].id;
+    }
+    return (await refreshSuggestedQuestions(wsId)) || [];
   }
 
   async uploadDocument({

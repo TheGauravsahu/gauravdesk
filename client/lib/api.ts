@@ -43,6 +43,12 @@ export const knowledgeApi = {
     })
     return res.data
   },
+  refreshQuestions: async (workspaceId?: string) => {
+    const res = await api.post(
+      `/api/knowledge/refresh-questions${workspaceId ? `?workspaceId=${workspaceId}` : ""}`
+    )
+    return res.data
+  },
   delete: async (id: string) => {
     const res = await api.delete(`/api/knowledge?id=${id}`)
     return res.data

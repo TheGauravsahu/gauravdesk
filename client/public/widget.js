@@ -62,10 +62,17 @@
     container.style.left = "auto"
   }
 
+  // Derive host domain from current page
+  var hostDomain = window.location.hostname || window.location.host
+  var widgetUrl = new URL(baseUrl + "/widget/" + encodeURIComponent(workspaceId))
+  if (hostDomain) {
+    widgetUrl.searchParams.set("host", hostDomain)
+  }
+
   // Create widget iframe
   var iframe = document.createElement("iframe")
   iframe.id = "gauravdesk-widget-frame"
-  iframe.src = baseUrl + "/widget/" + encodeURIComponent(workspaceId)
+  iframe.src = widgetUrl.toString()
   iframe.style.width = "100%"
   iframe.style.height = "100%"
   iframe.style.border = "none"
@@ -148,6 +155,17 @@
   // Cross-frame communication listener
   window.addEventListener("message", function (event) {
     if (event.data && typeof event.data === "object") {
+      if (event.data.type === "gauravdesk:unauthorized") {
+        console.warn(
+          "[GauravDesk] Chatbot embedding blocked: domain \"" +
+            (window.location.hostname || "unknown") +
+            "\" is not in the workspace allowed domains list."
+        )
+        if (container && container.parentNode) {
+          container.parentNode.removeChild(container)
+        }
+        return
+      }
       if (event.data.type === "gauravdesk:resize") {
         applySize(event.data.open, event.data.position || preferredPosition)
       }

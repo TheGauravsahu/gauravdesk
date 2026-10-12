@@ -58,6 +58,22 @@ export class KnowledgeController {
         .send({ error: err?.message || "Failed to delete document" })
     }
   }
+
+  async refreshQuestions(
+    req: FastifyRequest<{ Body?: { workspaceId?: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const workspaceId = req.body?.workspaceId
+      const questions = await knowledgeService.refreshQuestions(workspaceId)
+      return reply.send({ success: true, suggestedQuestions: questions })
+    } catch (err: any) {
+      req.log.error(err)
+      return reply
+        .status(500)
+        .send({ error: err?.message || "Failed to refresh questions" })
+    }
+  }
 }
 
 export const knowledgeController = new KnowledgeController()

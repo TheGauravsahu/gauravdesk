@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth/client";
 import { ProductPlayground } from "@/components/landing/ProductPlayground";
+import { Loader2 } from "lucide-react";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LandingFeatures } from "@/components/landing/LandingFeatures";
 import { LandingFaq } from "@/components/landing/LandingFaq";
@@ -18,11 +19,15 @@ export default function LandingPage({ initialUser = null }: LandingPageProps) {
   const [activeNav, setActiveNav] = useState<string>("Home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [user, setUser] = useState(initialUser);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(!initialUser);
 
   useEffect(() => {
+    let isMounted = true;
     async function checkAuth() {
       try {
+        if (!initialUser) setIsCheckingAuth(true);
         const res = await authClient.getSession();
+        if (!isMounted) return;
         if (res?.data?.user) {
           setUser(res.data.user);
         } else if (res?.data === null) {
@@ -30,10 +35,15 @@ export default function LandingPage({ initialUser = null }: LandingPageProps) {
         }
       } catch (err) {
         console.error("Session check error", err);
+      } finally {
+        if (isMounted) setIsCheckingAuth(false);
       }
     }
     checkAuth();
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [initialUser]);
 
   const handleSignOut = async () => {
     try {
@@ -121,6 +131,7 @@ export default function LandingPage({ initialUser = null }: LandingPageProps) {
             activeNav={activeNav}
             onNavigate={scrollToSection}
             user={user}
+            isCheckingAuth={isCheckingAuth}
             onSignOut={handleSignOut}
             mobileMenuOpen={mobileMenuOpen}
             setMobileMenuOpen={setMobileMenuOpen}
@@ -258,18 +269,31 @@ export default function LandingPage({ initialUser = null }: LandingPageProps) {
                 animationDelay: "0.40s",
               }}
             >
-              <Link
-                href={user ? "/dashboard" : "/signup"}
-                className="inline-flex items-center justify-center bg-white text-black font-semibold rounded-full transition-all duration-300 hover:-translate-y-[2px] hover:scale-[1.02] active:translate-y-0 cursor-pointer"
-                style={{
-                  fontSize: "clamp(13.5px, 1.5vw, 14.5px)",
-                  padding: "clamp(11px, 1.6vh, 13px) clamp(26px, 3.2vw, 32px)",
-                  boxShadow:
-                    "0 0 0 1px rgba(255,255,255,0.15), 0 0 22px rgba(255,255,255,0.32), 0 0 44px rgba(255,255,255,0.12)",
-                }}
-              >
-                {user ? "Open Dashboard" : "Get Started"}
-              </Link>
+              {isCheckingAuth ? (
+                <div
+                  className="inline-flex items-center justify-center bg-white/10 text-white font-medium rounded-full gap-2 border border-white/20"
+                  style={{
+                    fontSize: "clamp(13.5px, 1.5vw, 14.5px)",
+                    padding: "clamp(11px, 1.6vh, 13px) clamp(26px, 3.2vw, 32px)",
+                  }}
+                >
+                  <Loader2 className="size-4 animate-spin text-blue-400" />
+                  <span className="text-white/80">Loading...</span>
+                </div>
+              ) : (
+                <Link
+                  href={user ? "/dashboard" : "/signup"}
+                  className="inline-flex items-center justify-center bg-white text-black font-semibold rounded-full transition-all duration-300 hover:-translate-y-[2px] hover:scale-[1.02] active:translate-y-0 cursor-pointer"
+                  style={{
+                    fontSize: "clamp(13.5px, 1.5vw, 14.5px)",
+                    padding: "clamp(11px, 1.6vh, 13px) clamp(26px, 3.2vw, 32px)",
+                    boxShadow:
+                      "0 0 0 1px rgba(255,255,255,0.15), 0 0 22px rgba(255,255,255,0.32), 0 0 44px rgba(255,255,255,0.12)",
+                  }}
+                >
+                  {user ? "Open Dashboard" : "Get Started"}
+                </Link>
+              )}
             </div>
           </section>
 
@@ -291,7 +315,7 @@ export default function LandingPage({ initialUser = null }: LandingPageProps) {
       <LandingFaq />
 
       {/* CTA Section */}
-      <LandingCta user={user} />
+      <LandingCta user={user} isCheckingAuth={isCheckingAuth} />
 
       {/* Comprehensive Footer */}
       <LandingFooter onNavigate={scrollToSection} />

@@ -2,13 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, Loader2 } from "lucide-react";
 
 interface LandingCtaProps {
   user: { name?: string | null; email?: string | null } | null;
+  isCheckingAuth?: boolean;
 }
 
-export function LandingCta({ user }: LandingCtaProps) {
+export function LandingCta({ user, isCheckingAuth }: LandingCtaProps) {
   return (
     <section
       id="contact-section"
@@ -26,13 +27,20 @@ export function LandingCta({ user }: LandingCtaProps) {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            <Link
-              href={user ? "/dashboard" : "/signup"}
-              className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white text-black font-semibold rounded-full px-8 py-3.5 text-sm transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-[1.02] cursor-pointer"
-            >
-              <span>{user ? "Go to Operator Dashboard" : "Create a workspace"}</span>
-              <ArrowRightIcon className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
-            </Link>
+            {isCheckingAuth ? (
+              <div className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/10 text-white font-medium rounded-full px-8 py-3.5 text-sm border border-white/15">
+                <Loader2 className="size-4 animate-spin text-blue-400" />
+                <span>Loading session...</span>
+              </div>
+            ) : (
+              <Link
+                href={user ? "/dashboard" : "/signup"}
+                className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white text-black font-semibold rounded-full px-8 py-3.5 text-sm transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-[1.02] cursor-pointer"
+              >
+                <span>{user ? "Go to Operator Dashboard" : "Create a workspace"}</span>
+                <ArrowRightIcon className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
+              </Link>
+            )}
             <Link
               href="/login"
               className="w-full sm:w-auto inline-flex items-center justify-center bg-white/10 hover:bg-white/15 text-white font-medium rounded-full border border-white/15 px-6 py-3.5 text-sm transition-colors cursor-pointer"

@@ -9,9 +9,9 @@ import {
   User,
   FileText,
   Headphones,
-  CheckCircle2,
 } from "lucide-react"
 import { chatApi } from "@/lib/api"
+import { GlossyOrbAvatar } from "@/components/ui/GlossyOrbAvatar"
 
 interface EmbeddedWidgetClientProps {
   workspace: {
@@ -22,27 +22,8 @@ interface EmbeddedWidgetClientProps {
     position: string
     greetingMessage: string
     starterQuestions: string[]
-    avatarUrl?: string
+    avatarUrl?: string | null
   }
-}
-
-function GlossyOrbAvatar({ className = "size-9" }: { className?: string }) {
-  return (
-    <div
-      className={`rounded-full shrink-0 relative overflow-hidden shadow-inner ${className}`}
-      style={{
-        background: "radial-gradient(circle at 35% 30%, #93c5fd 0%, #3b82f6 45%, #1d4ed8 75%, #1e40af 100%)",
-        boxShadow: "inset -2px -2px 6px rgba(0, 0, 0, 0.4), inset 2px 2px 4px rgba(255, 255, 255, 0.7), 0 2px 5px rgba(0,0,0,0.25)",
-      }}
-    >
-      <div
-        className="absolute top-0.5 left-1 w-1/3 h-1/4 rounded-full opacity-80 blur-[0.3px]"
-        style={{
-          background: "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 80%)",
-        }}
-      />
-    </div>
-  )
 }
 
 function getClientMetadata() {
@@ -72,7 +53,6 @@ function getClientMetadata() {
 }
 
 export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
-  // Start open by default or collapsed
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<
     Array<{ id: string; sender: "agent" | "visitor" | "operator"; senderName?: string; text: string; citation?: string }>
@@ -89,12 +69,38 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [chatStatus, setChatStatus] = useState<string>("open")
   const [chatTag, setChatTag] = useState<string>("Agent")
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const isLeft = workspace.position === "bottom-left"
 
+  // Update initial message when workspace data loads
+  useEffect(() => {
+    if (workspace.agentName || workspace.greetingMessage) {
+      setMessages((prev) => {
+        if (prev.length === 1 && prev[0].id === "initial") {
+          return [
+            {
+              id: "initial",
+              sender: "agent",
+              senderName: workspace.agentName || "Gaurav Desk Agent",
+              text: workspace.greetingMessage || "Hi there! How can we help you today?",
+            },
+          ]
+        }
+        return prev
+      })
+    }
+  }, [workspace.agentName, workspace.greetingMessage])
+
+  // Internal scroll to bottom that never scrolls parent window
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      })
+    }
   }
 
   useEffect(() => {
@@ -142,7 +148,7 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
     return "vis_anon"
   })
 
-  // Real-time synchronization: Poll for operator messages & status updates
+  // Poll for operator messages & status updates
   useEffect(() => {
     if (!conversationId) return
 
@@ -175,7 +181,7 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
             return prev
           })
         }
-      } catch (err) {
+      } catch {
         // silent sync error
       }
     }, 2000)
@@ -222,7 +228,7 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
           },
         ])
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -240,30 +246,23 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
   const isHumanEscalated = chatStatus === "waiting" || chatTag === "Waiting" || chatTag === "You"
 
   return (
-    <div
-      className={`w-full h-full flex flex-col ${
-        isLeft ? "items-start" : "items-end"
-      } justify-end font-sans select-none overflow-hidden p-2`}
-    >
-      {/* 1. Chat Window */}
+    <div className="fixed inset-0 w-full h-full flex flex-col overflow-hidden bg-transparent select-none">
       {isOpen ? (
-        <div className="w-full h-full max-w-[380px] max-h-[600px] rounded-2xl shadow-2xl border border-zinc-800 bg-[#111114] flex flex-col overflow-hidden transition-all text-zinc-100">
+        /* 1. Chat Window Container (Permanently bounded to iframe, header top, composer bottom) */
+        <div className="w-full h-full rounded-2xl shadow-2xl border border-zinc-800 bg-[#111114] flex flex-col overflow-hidden text-zinc-100">
           
-          {/* Header in Workspace Accent Color */}
+          {/* Header in Workspace Accent Color (Pinned Top) */}
           <div
-            className="px-4 py-3 text-white flex items-center justify-between shrink-0 shadow-sm"
+            className="px-4 py-3 text-white flex items-center justify-between shrink-0 shadow-sm z-10"
             style={{ backgroundColor: workspace.accentColor || "#2563eb" }}
           >
             <div className="flex items-center gap-3 min-w-0">
-              {workspace.avatarUrl ? (
-                <img
-                  src={workspace.avatarUrl}
-                  alt={workspace.agentName}
-                  className="size-8.5 rounded-full object-cover shrink-0 shadow-xs border border-white/30"
-                />
-              ) : (
-                <GlossyOrbAvatar className="size-8.5" />
-              )}
+              <GlossyOrbAvatar
+                avatarUrl={workspace.avatarUrl}
+                color={workspace.accentColor}
+                alt={workspace.agentName}
+                className="size-8.5 border border-white/30"
+              />
               <div className="truncate">
                 <h3 className="font-bold text-sm leading-tight truncate">
                   {workspace.agentName || "Gaurav Desk"}
@@ -281,14 +280,15 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
               type="button"
               onClick={() => setIsOpen(false)}
               className="p-1 rounded-lg hover:bg-white/15 transition-colors cursor-pointer"
+              aria-label="Close chat"
             >
               <ChevronDown className="size-5" />
             </button>
           </div>
 
-          {/* Handover Notice Banner if Escalated */}
+          {/* Handover Notice Banner if Escalated (Pinned under header) */}
           {isHumanEscalated && (
-            <div className="px-3.5 py-2 bg-blue-950/60 border-b border-blue-800/40 flex items-center gap-2 text-xs text-blue-200">
+            <div className="px-3.5 py-2 bg-blue-950/60 border-b border-blue-800/40 flex items-center gap-2 text-xs text-blue-200 shrink-0 z-10">
               <Headphones className="size-3.5 text-blue-400 shrink-0" />
               <span className="text-[11px] font-medium leading-tight">
                 Live human operator connected. Replies will appear here directly.
@@ -296,8 +296,11 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
             </div>
           )}
 
-          {/* Messages Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[#0e0e11]">
+          {/* Messages Body (Only this area scrolls) */}
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 bg-[#0e0e11] widget-scroll"
+          >
             <div className="flex justify-center pb-1">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-700/60 bg-zinc-900/90 text-[11px] text-zinc-300 font-medium shadow-2xs">
                 <BookOpen className="size-3 text-zinc-400" />
@@ -308,7 +311,6 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
             {messages.map((m) => {
               const isVisitor = m.sender === "visitor"
               const isOperator = m.sender === "operator"
-              const isAgent = m.sender === "agent"
 
               return (
                 <div
@@ -334,14 +336,13 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
                         <div className="size-6 rounded-full bg-blue-600 text-white font-bold text-[10px] grid place-items-center mt-0.5 shrink-0 shadow-xs">
                           OP
                         </div>
-                      ) : workspace.avatarUrl ? (
-                        <img
-                          src={workspace.avatarUrl}
-                          alt={workspace.agentName}
-                          className="size-6 rounded-full object-cover mt-0.5 shrink-0"
-                        />
                       ) : (
-                        <GlossyOrbAvatar className="size-6 mt-0.5 shrink-0" />
+                        <GlossyOrbAvatar
+                          avatarUrl={workspace.avatarUrl}
+                          color={workspace.accentColor}
+                          alt={workspace.agentName}
+                          className="size-6 mt-0.5 shrink-0"
+                        />
                       )
                     )}
 
@@ -383,15 +384,15 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
               </div>
             )}
 
-            {/* Starter chips */}
-            {messages.length <= 1 && workspace.starterQuestions?.length > 0 && (
-              <div className="pt-2 flex flex-col items-end gap-1.5">
+            {/* Suggested Starter Questions Chips (Full-width clean cards identical to dashboard preview) */}
+            {messages.length <= 1 && Array.isArray(workspace.starterQuestions) && workspace.starterQuestions.length > 0 && (
+              <div className="pt-2 flex flex-col gap-2 w-full">
                 {workspace.starterQuestions.map((q, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleSend(q)}
-                    className="text-right px-3.5 py-2 rounded-xl border border-zinc-700/70 bg-[#16161a] text-zinc-200 text-xs hover:border-zinc-500 hover:bg-[#202026] transition-all cursor-pointer shadow-2xs hover:scale-[1.01]"
+                    className="w-full text-left px-3.5 py-2.5 rounded-xl border border-zinc-800/90 bg-[#16161a] hover:bg-[#202026] hover:border-zinc-700 text-zinc-200 text-xs transition-all cursor-pointer shadow-xs active:scale-[0.99]"
                   >
                     {q}
                   </button>
@@ -411,46 +412,47 @@ export function EmbeddedWidgetClient({ workspace }: EmbeddedWidgetClientProps) {
                 </button>
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
 
-          {/* Composer */}
+          {/* Composer (Permanently Docked Bottom - Never Hides) */}
           <form
             onSubmit={(e) => {
               e.preventDefault()
               handleSend()
             }}
-            className="p-2.5 bg-[#121215] border-t border-zinc-800 flex items-center gap-2 shrink-0"
+            className="p-2.5 bg-[#121215] border-t border-zinc-800 flex items-center gap-2 shrink-0 z-10"
           >
             <input
               type="text"
               placeholder={isHumanEscalated ? "Type message to operator..." : "Write a message..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-[#1c1c21] border border-zinc-700/50 focus:border-zinc-500 rounded-xl px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
+              className="flex-1 bg-[#1c1c21] border border-zinc-700/50 focus:border-zinc-500 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
             />
             <button
               type="submit"
               disabled={!input.trim()}
-              className="size-7 rounded-full flex items-center justify-center text-white disabled:opacity-40 transition-transform active:scale-95 cursor-pointer shadow-xs shrink-0"
+              className="size-7.5 rounded-full flex items-center justify-center text-white disabled:opacity-40 transition-transform active:scale-95 cursor-pointer shadow-xs shrink-0"
               style={{ backgroundColor: workspace.accentColor || "#2563eb" }}
+              aria-label="Send message"
             >
               <ArrowUp className="size-3.5 stroke-[2.5]" />
             </button>
           </form>
         </div>
       ) : (
-        /* 2. Floating Launch Bubble */
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="size-13 rounded-full text-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          style={{ backgroundColor: workspace.accentColor || "#2563eb" }}
-          aria-label="Open chat"
-        >
-          <MessageCircle className="size-6" />
-        </button>
+        /* 2. Floating Launch Bubble (Centered inside transparent frame) */
+        <div className="w-full h-full flex items-center justify-center">
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="size-14 rounded-full text-white shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            style={{ backgroundColor: workspace.accentColor || "#2563eb" }}
+            aria-label="Open chat"
+          >
+            <MessageCircle className="size-7" />
+          </button>
+        </div>
       )}
     </div>
   )

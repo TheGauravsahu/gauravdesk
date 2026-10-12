@@ -21,7 +21,6 @@
 
   var workspaceId = currentScript.getAttribute("data-workspace")
   if (!workspaceId) {
-    // Try query param
     var parsedUrl = new URL(currentScript.src, window.location.href)
     workspaceId = parsedUrl.searchParams.get("workspace")
   }
@@ -39,25 +38,27 @@
     currentScript.getAttribute("data-position") || "bottom-right"
   var isLeft = preferredPosition === "bottom-left"
 
-  // Create floating container
+  // Create floating container with transparent background
   var container = document.createElement("div")
   container.id = "gauravdesk-widget-container"
   container.style.position = "fixed"
   container.style.zIndex = "2147483647"
   container.style.border = "none"
   container.style.background = "transparent"
+  container.style.backgroundColor = "transparent"
   container.style.overflow = "hidden"
-  container.style.transition = "width 0.25s ease-in-out, height 0.25s ease-in-out, transform 0.25s ease-in-out"
+  container.style.transition = "width 0.2s cubic-bezier(0.16, 1, 0.3, 1), height 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
 
-  // Sizing: initial collapsed launcher state
-  container.style.width = "80px"
-  container.style.height = "80px"
-  container.style.bottom = "16px"
+  // Initial launcher state
+  container.style.width = "72px"
+  container.style.height = "72px"
+  container.style.top = "auto"
+  container.style.bottom = "20px"
   if (isLeft) {
-    container.style.left = "16px"
+    container.style.left = "20px"
     container.style.right = "auto"
   } else {
-    container.style.right = "16px"
+    container.style.right = "20px"
     container.style.left = "auto"
   }
 
@@ -69,13 +70,14 @@
   iframe.style.height = "100%"
   iframe.style.border = "none"
   iframe.style.background = "transparent"
+  iframe.style.backgroundColor = "transparent"
   iframe.style.colorScheme = "normal"
   iframe.allow = "clipboard-write; autoplay"
   iframe.title = "GauravDesk Customer Support Chat"
 
   container.appendChild(iframe)
 
-  // Attach to DOM once loaded
+  // Attach to DOM once ready
   function init() {
     if (!document.getElementById("gauravdesk-widget-container")) {
       document.body.appendChild(container)
@@ -94,44 +96,54 @@
     isChatOpen = open
     var alignLeft = position === "bottom-left"
 
-    if (alignLeft) {
-      container.style.left = "16px"
-      container.style.right = "auto"
-    } else {
-      container.style.right = "16px"
-      container.style.left = "auto"
-    }
-
     if (open) {
-      var isMobile = window.innerWidth <= 480
+      var isMobile = window.innerWidth <= 640
       if (isMobile) {
         container.style.width = "100vw"
         container.style.height = "100dvh"
+        container.style.top = "0"
         container.style.bottom = "0"
         container.style.left = "0"
         container.style.right = "0"
         container.style.borderRadius = "0px"
       } else {
         container.style.width = "380px"
-        container.style.height = "640px"
+        container.style.height = "600px"
         container.style.maxWidth = "calc(100vw - 32px)"
         container.style.maxHeight = "calc(100vh - 40px)"
-        container.style.bottom = "16px"
+        container.style.top = "auto"
+        container.style.bottom = "20px"
         container.style.borderRadius = "16px"
+        if (alignLeft) {
+          container.style.left = "20px"
+          container.style.right = "auto"
+        } else {
+          container.style.right = "20px"
+          container.style.left = "auto"
+        }
       }
     } else {
-      container.style.width = "80px"
-      container.style.height = "80px"
-      container.style.bottom = "16px"
+      container.style.width = "72px"
+      container.style.height = "72px"
+      container.style.top = "auto"
+      container.style.bottom = "20px"
+      container.style.borderRadius = "50%"
       if (alignLeft) {
-        container.style.left = "16px"
+        container.style.left = "20px"
         container.style.right = "auto"
       } else {
-        container.style.right = "16px"
+        container.style.right = "20px"
         container.style.left = "auto"
       }
     }
   }
+
+  // Handle dynamic browser window resizing
+  window.addEventListener("resize", function () {
+    if (isChatOpen) {
+      applySize(true, preferredPosition)
+    }
+  })
 
   // Cross-frame communication listener
   window.addEventListener("message", function (event) {

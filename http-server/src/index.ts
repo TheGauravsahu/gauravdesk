@@ -28,11 +28,28 @@ export async function buildServer() {
     bodyLimit: 15 * 1024 * 1024, // 15 MB for uploads
   });
 
-  // 1. Register CORS for client frontend communication
+  // 1. Register CORS for client frontend communication and embedded widgets
   await server.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      // Dynamically echo back the request origin to allow credentials (cookies/auth)
+      // and support any domain embedding the chat widget or frontend
+      cb(null, true);
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "Authorization",
+      "Cookie",
+      "baggage",
+      "sentry-trace",
+    ],
+    exposedHeaders: ["Set-Cookie"],
+    preflight: true,
+    strictPreflight: false,
   });
 
   // 2. Register Multipart for document and image uploads

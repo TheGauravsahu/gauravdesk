@@ -17,10 +17,19 @@ export default async function WidgetPage({ params }: WidgetPageProps) {
   const { workspaceId } = await params
 
   try {
-    const res = await axios.get(`${BACKEND_URL}/api/workspace/${workspaceId}`, {
-      timeout: 5000,
-    })
-    const ws = res.data
+    let ws: any = null
+    try {
+      const res = await axios.get(`${BACKEND_URL}/api/workspace/${workspaceId}`, {
+        timeout: 5000,
+      })
+      ws = res.data
+    } catch {
+      // Fallback to primary workspace if specific ID lookup failed
+      const fallbackRes = await axios.get(`${BACKEND_URL}/api/workspace`, {
+        timeout: 5000,
+      })
+      ws = fallbackRes.data
+    }
 
     if (!ws || !ws.id) {
       notFound()
@@ -30,13 +39,20 @@ export default async function WidgetPage({ params }: WidgetPageProps) {
       <EmbeddedWidgetClient
         workspace={{
           id: ws.id,
-          name: ws.name,
-          agentName: ws.agent_name,
-          accentColor: ws.accent_color,
-          position: ws.position,
-          greetingMessage: ws.greeting_message,
-          starterQuestions: Array.isArray(ws.starter_questions) ? ws.starter_questions : [],
-          avatarUrl: ws.avatar_url,
+          name: ws.name || "Default Workspace",
+          agentName: ws.agentName || ws.agent_name || "Gaurav Desk Agent",
+          accentColor: ws.accentColor || ws.accent_color || "#2563eb",
+          position: ws.position || "bottom-right",
+          greetingMessage:
+            ws.greetingMessage ||
+            ws.greeting_message ||
+            "Hi there! How can we help you today?",
+          starterQuestions: Array.isArray(ws.starterQuestions)
+            ? ws.starterQuestions
+            : Array.isArray(ws.starter_questions)
+            ? ws.starter_questions
+            : [],
+          avatarUrl: ws.avatarUrl || ws.avatar_url || null,
         }}
       />
     )

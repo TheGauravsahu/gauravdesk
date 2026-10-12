@@ -1,8 +1,8 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { ArrowUp, BookOpen, ExternalLink, RotateCcw, User } from "lucide-react"
-import { getDiceBearAvatar } from "@/lib/avatar"
+import { ArrowUp, BookOpen, ExternalLink, MessageCircle, RotateCcw, User } from "lucide-react"
+import { GlossyOrbAvatar } from "@/components/ui/GlossyOrbAvatar"
 
 interface PreviewMessage {
   id: string
@@ -104,10 +104,11 @@ export function WidgetPreview({
                   style={{ backgroundColor: accentColor }}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <img
-                      src={agentAvatar || getDiceBearAvatar(agentName, "bottts-neutral")}
-                      alt=""
-                      className="size-8 shrink-0 rounded-full border border-white/30 object-cover bg-white/10"
+                    <GlossyOrbAvatar
+                      avatarUrl={agentAvatar}
+                      color={accentColor}
+                      alt={agentName}
+                      className="size-8.5 shrink-0 border border-white/30"
                     />
                     <span className="truncate text-sm font-semibold">
                       {agentName}
@@ -132,10 +133,11 @@ export function WidgetPreview({
                   </div>
 
                   <div className="flex items-start gap-2">
-                    <img
-                      src={agentAvatar || getDiceBearAvatar(agentName, "bottts-neutral")}
-                      alt=""
-                      className="mt-0.5 size-6 shrink-0 rounded-full object-cover bg-white/10"
+                    <GlossyOrbAvatar
+                      avatarUrl={agentAvatar}
+                      color={accentColor}
+                      alt={agentName}
+                      className="mt-0.5 size-6 shrink-0"
                     />
                     <div className="rounded-2xl rounded-tl-sm border border-zinc-700/40 bg-[#222226] px-3.5 py-2.5 text-xs leading-relaxed text-white">
                       {greeting}
@@ -172,10 +174,11 @@ export function WidgetPreview({
 
                   {isSending && (
                     <div className="flex items-center gap-2 pt-1">
-                      <img
-                        src={agentAvatar || getDiceBearAvatar(agentName, "bottts-neutral")}
-                        alt=""
-                        className="size-6 shrink-0 rounded-full object-cover bg-white/10"
+                      <GlossyOrbAvatar
+                        avatarUrl={agentAvatar}
+                        color={accentColor}
+                        alt={agentName}
+                        className="size-6 shrink-0"
                       />
                       <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-zinc-700/40 bg-[#222226] px-3.5 py-2.5">
                         <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.3s]" />
@@ -238,10 +241,10 @@ export function WidgetPreview({
                 type="button"
                 onClick={() => onOpenChange(true)}
                 aria-label="Open chat preview"
-                className="grid size-14 place-items-center rounded-full text-white shadow-xl"
+                className="grid size-14 place-items-center rounded-full text-white shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer"
                 style={{ backgroundColor: accentColor }}
               >
-                <BookOpen className="size-6" />
+                <MessageCircle className="size-7" />
               </button>
             )}
           </div>

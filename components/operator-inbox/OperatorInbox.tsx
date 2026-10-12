@@ -109,10 +109,35 @@ export function OperatorInbox({
     prevWaitingCountRef.current = currentWaiting
   }, [conversations])
 
+  // Message scrolling refs and handler
+  const messagesEndRef = React.useRef<HTMLDivElement | null>(null)
+  const messagesContainerRef = React.useRef<HTMLDivElement | null>(null)
+
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior, block: "end" })
+    } else if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior,
+      })
+    }
+  }, [])
+
   // Active selected conversation
   const activeConversation = selectedId
     ? conversations.find((c) => c.id === selectedId) || null
     : null
+
+  // Auto-scroll on conversation change or new incoming/outgoing message
+  React.useEffect(() => {
+    if (activeConversation) {
+      const timer = setTimeout(() => {
+        scrollToBottom("smooth")
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [activeConversation?.messages?.length, selectedId, scrollToBottom])
 
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
@@ -167,6 +192,8 @@ export function OperatorInbox({
     )
 
     setIsSending(true)
+    setTimeout(() => scrollToBottom("smooth"), 30)
+
     try {
       await conversationsApi.reply({
         conversationId,
@@ -175,6 +202,7 @@ export function OperatorInbox({
       })
       setReplyText("")
       await fetchConversations(true)
+      setTimeout(() => scrollToBottom("smooth"), 30)
     } catch (error) {
       console.error("Failed to send operator reply", error)
       setConversations(previousConversations)
@@ -329,7 +357,10 @@ export function OperatorInbox({
           </header>
 
           {/* Message Thread Stream */}
-          <div className="flex-1 p-6 overflow-y-auto space-y-5 bg-zinc-50/60 dark:bg-[#0c0c0e]">
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 p-6 overflow-y-auto space-y-5 bg-zinc-50/60 dark:bg-[#0c0c0e] scroll-smooth"
+          >
             {activeConversation.messages.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-zinc-400">
                 No messages yet in this conversation.
@@ -434,6 +465,7 @@ export function OperatorInbox({
                 )
               })
             )}
+            <div ref={messagesEndRef} className="h-0 w-0" />
           </div>
 
           {/* Composer Box */}

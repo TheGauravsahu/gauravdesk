@@ -37,14 +37,6 @@ const nextConfig: NextConfig = {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     return [
       {
-        source: "/api/auth/:path*",
-        destination: `${backendUrl}/api/auth/:path*`,
-      },
-      {
-        source: "/api/auth",
-        destination: `${backendUrl}/api/auth`,
-      },
-      {
         source: "/api/workspace/:path*",
         destination: `${backendUrl}/api/workspace/:path*`,
       },

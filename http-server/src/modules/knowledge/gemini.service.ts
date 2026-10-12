@@ -259,20 +259,38 @@ export async function generateSuggestedQuestionsFromKnowledge(
     },
   });
 
-  const responseText = response.text?.trim();
+  let responseText = response.text?.trim() || "";
   if (!responseText) {
     throw new Error("AI provider returned no suggested questions");
   }
+
+  // Strip markdown code fences if present (e.g. ```json [...] ```)
+  responseText = responseText
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(responseText);
   } catch {
-    throw new Error("AI provider returned invalid suggested-question JSON");
+    // Try to extract bracketed array
+    const arrayMatch = responseText.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      try {
+        parsed = JSON.parse(arrayMatch[0]);
+      } catch {
+        parsed = null;
+      }
+    }
   }
 
   if (!Array.isArray(parsed)) {
-    throw new Error("AI provider returned an invalid suggested-question list");
+    // Fallback: extract questions from lines
+    parsed = responseText
+      .split("\n")
+      .map((l) => l.replace(/^[-*0-9.)"\s]+/, "").replace(/["\s,]+$/, "").trim())
+      .filter((l) => l.endsWith("?"));
   }
 
   const questions = Array.from(

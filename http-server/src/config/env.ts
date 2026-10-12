@@ -12,6 +12,6 @@ export const config = {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
     region: process.env.AWS_REGION || "ap-southeast-1",
-    bucket: process.env.NEON_OBJECT_STORAGE_BUCKET || "avatars",
+    bucket: process.env.NEON_OBJECT_STORAGE_BUCKET || process.env.AWS_BUCKET || "assets",
   },
 };

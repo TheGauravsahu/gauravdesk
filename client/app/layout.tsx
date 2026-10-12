@@ -15,6 +15,7 @@ const inter = Inter({
 });
 
 import { Providers } from "@/components/providers/QueryProvider";
+import { GlobalLoaderProvider } from "@/components/ui/GlobalLoader";
 
 export const metadata: Metadata = {
   title: "GauravDesk — AI Customer Support Grounded in Truth",
@@ -68,7 +69,9 @@ export default function RootLayout({
       <body className="min-h-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased transition-colors duration-150">
         <Providers>
           <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-            {children}
+            <GlobalLoaderProvider>
+              {children}
+            </GlobalLoaderProvider>
             <Toaster richColors position="top-right" />
           </ThemeProvider>
         </Providers>

@@ -5,6 +5,8 @@ const BACKEND_URL =
     ? (process.env.NEXT_PUBLIC_API_URL || "")
     : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000")
 
+import { globalLoadingStore } from "./loading-store"
+
 export const api = axios.create({
   baseURL: BACKEND_URL,
   headers: {
@@ -12,6 +14,35 @@ export const api = axios.create({
   },
   withCredentials: true,
 })
+
+// Automatically track active API requests in global loading store
+api.interceptors.request.use(
+  (config) => {
+    if (!config.headers?.["x-silent-request"]) {
+      globalLoadingStore.start()
+    }
+    return config
+  },
+  (error) => {
+    globalLoadingStore.stop()
+    return Promise.reject(error)
+  }
+)
+
+api.interceptors.response.use(
+  (response) => {
+    if (!response.config?.headers?.["x-silent-request"]) {
+      globalLoadingStore.stop()
+    }
+    return response
+  },
+  (error) => {
+    if (!error.config?.headers?.["x-silent-request"]) {
+      globalLoadingStore.stop()
+    }
+    return Promise.reject(error)
+  }
+)
 
 // Workspace API
 export const workspaceApi = {
@@ -41,6 +72,12 @@ export const knowledgeApi = {
     const res = await api.post("/api/knowledge", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })
+    return res.data
+  },
+  refreshQuestions: async (workspaceId?: string) => {
+    const res = await api.post(
+      `/api/knowledge/refresh-questions${workspaceId ? `?workspaceId=${workspaceId}` : ""}`
+    )
     return res.data
   },
   delete: async (id: string) => {

@@ -6,6 +6,9 @@ interface WidgetPageProps {
   params: Promise<{
     workspaceId: string
   }>
+  searchParams?: Promise<{
+    host?: string
+  }>
 }
 
 const BACKEND_URL =
@@ -13,8 +16,10 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:4000"
 
-export default async function WidgetPage({ params }: WidgetPageProps) {
+export default async function WidgetPage({ params, searchParams }: WidgetPageProps) {
   const { workspaceId } = await params
+  const search = searchParams ? await searchParams : undefined
+  const host = search?.host
 
   try {
     let ws: any = null
@@ -37,6 +42,7 @@ export default async function WidgetPage({ params }: WidgetPageProps) {
 
     return (
       <EmbeddedWidgetClient
+        host={host}
         workspace={{
           id: ws.id,
           name: ws.name || "Default Workspace",
@@ -53,6 +59,11 @@ export default async function WidgetPage({ params }: WidgetPageProps) {
             ? ws.starter_questions
             : [],
           avatarUrl: ws.avatarUrl || ws.avatar_url || null,
+          allowedDomains: Array.isArray(ws.allowedDomains)
+            ? ws.allowedDomains
+            : Array.isArray(ws.allowed_domains)
+            ? ws.allowed_domains
+            : [],
         }}
       />
     )

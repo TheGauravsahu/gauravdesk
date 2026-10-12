@@ -33,6 +33,23 @@ export const knowledgeRoutes: FastifyPluginAsync = async (fastify) => {
     knowledgeController.uploadDocument.bind(knowledgeController)
   )
 
+  fastify.post(
+    "/api/knowledge/refresh-questions",
+    {
+      schema: {
+        summary: "Regenerate suggested starter questions from knowledge base",
+        tags: ["Knowledge Base"],
+        querystring: {
+          type: "object",
+          properties: {
+            workspaceId: { type: "string" },
+          },
+        },
+      },
+    },
+    knowledgeController.refreshQuestions.bind(knowledgeController)
+  )
+
   fastify.delete(
     "/api/knowledge",
     {

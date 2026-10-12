@@ -36,7 +36,7 @@ export class ChatRepository {
   }
 
   async resolveWorkspace(workspaceId?: string) {
-    let targetWorkspaceId = workspaceId
+    let targetWorkspaceId: string | null = workspaceId || null
     if (!targetWorkspaceId) {
       if (cachedDefaultWorkspaceId) {
         targetWorkspaceId = cachedDefaultWorkspaceId

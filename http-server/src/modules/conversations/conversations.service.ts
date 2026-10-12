@@ -9,7 +9,7 @@ let cachedDefaultWsId: string | null = null
 
 export class ConversationService {
   async getConversations(workspaceIdParam?: string) {
-    let workspaceId = workspaceIdParam
+    let workspaceId: string | null = workspaceIdParam || null
     if (!workspaceId) {
       if (!cachedDefaultWsId) {
         const defaultWs =

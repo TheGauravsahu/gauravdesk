@@ -4,22 +4,23 @@ import { Loader2 } from "lucide-react"
 export default function DashboardLoading() {
   return (
     <div className="w-full h-screen overflow-hidden flex bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 select-none animate-in fade-in duration-100">
-      {/* 1. Exact Sidebar Skeleton matching DashboardShell */}
+      {/* 1. Exact Sidebar Skeleton matching DashboardShell (Home Active with Blue Theme) */}
       <aside className="w-16 shrink-0 flex flex-col justify-between items-center py-4 border-r border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-100/70 dark:bg-[#0c0c0e] z-30">
         <div className="flex flex-col items-center gap-4 w-full">
           {/* Logo Squircle */}
           <div className="size-10 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 grid place-items-center animate-pulse">
-            <div className="size-5 rounded-md bg-purple-500/30" />
+            <div className="size-5 rounded-md bg-blue-500/30" />
           </div>
 
           <div className="w-8 h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
 
-          {/* Navigation Item 1 Placeholder */}
-          <div className="size-10 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 grid place-items-center animate-pulse">
-            <div className="size-5 rounded bg-purple-500/20" />
+          {/* Navigation Item 1: Home (ACTIVE with Blue Accent) */}
+          <div className="relative size-10 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 grid place-items-center shadow-xs">
+            <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-600 dark:bg-blue-400" />
+            <div className="size-5 rounded bg-blue-500/30 animate-pulse" />
           </div>
 
-          {/* Navigation Item 2 Placeholder */}
+          {/* Navigation Item 2: Inbox (Inactive) */}
           <div className="size-10 rounded-xl bg-zinc-200/50 dark:bg-zinc-800/40 grid place-items-center animate-pulse">
             <div className="size-5 rounded bg-zinc-300 dark:bg-zinc-700" />
           </div>
@@ -36,9 +37,11 @@ export default function DashboardLoading() {
           <div className="flex items-center gap-3">
             <div className="size-7 rounded-lg bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
             <div className="flex items-center gap-2">
-              <div className="h-3 w-16 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+              <span className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                GauravDesk
+              </span>
               <span className="text-zinc-300 dark:text-zinc-700">/</span>
-              <div className="h-3.5 w-28 bg-zinc-300 dark:bg-zinc-700 rounded animate-pulse" />
+              <div className="h-3.5 w-28 bg-blue-500/20 dark:bg-blue-400/20 rounded animate-pulse" />
             </div>
           </div>
 
@@ -73,10 +76,10 @@ export default function DashboardLoading() {
               <div className="h-24 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 animate-pulse" />
             </div>
 
-            {/* Subtle Loading Indicator Pill */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-purple-500/20 bg-purple-500/5 text-purple-600 dark:text-purple-400 text-xs font-medium">
+            {/* Subtle Blue Loading Indicator Pill */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 text-blue-600 dark:text-blue-400 text-xs font-medium">
               <Loader2 className="size-3.5 animate-spin" />
-              <span>Loading workspace data...</span>
+              <span>Loading workspace settings...</span>
             </div>
           </div>
 
@@ -86,10 +89,10 @@ export default function DashboardLoading() {
               <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
               <div className="size-6 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
             </div>
-            {/* Widget Card Skeleton */}
+            {/* Widget Card Skeleton with Blue Theme */}
             <div className="w-full h-[460px] rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#16161a] overflow-hidden flex flex-col justify-between p-4 shadow-sm">
               <div className="flex items-center gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800/80">
-                <div className="size-8 rounded-full bg-purple-500/30 animate-pulse" />
+                <div className="size-8 rounded-full bg-blue-500/30 animate-pulse" />
                 <div className="space-y-1">
                   <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
                   <div className="h-2 w-12 bg-zinc-200/60 dark:bg-zinc-800/60 rounded animate-pulse" />
@@ -97,7 +100,7 @@ export default function DashboardLoading() {
               </div>
               <div className="space-y-2 py-4">
                 <div className="h-10 w-3/4 rounded-xl bg-zinc-100 dark:bg-zinc-800/50 animate-pulse" />
-                <div className="h-8 w-1/2 ml-auto rounded-xl bg-purple-500/20 animate-pulse" />
+                <div className="h-8 w-1/2 ml-auto rounded-xl bg-blue-500/20 border border-blue-500/30 animate-pulse" />
               </div>
               <div className="h-10 w-full rounded-xl bg-zinc-100 dark:bg-zinc-800/60 animate-pulse" />
             </div>
